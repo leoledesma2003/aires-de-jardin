@@ -114,7 +114,8 @@ const aviso = document.getElementById('formularioAviso');
 const abiertoEn = Date.now();
 // En hostings sin PHP (GitHub Pages) o abriendo el archivo directo en la compu,
 // el formulario no se puede guardar: se manda el pedido armado por WhatsApp.
-const SIN_PHP = location.protocol === 'file:' || location.hostname.endsWith('github.io');
+const SIN_PHP = location.protocol === 'file:' || location.hostname.endsWith('github.io')
+  || document.documentElement.dataset.sinPhp === 'true'; // lo marca publicar-github.sh
 
 function linkWhatsapp(datos) {
   const texto = [
