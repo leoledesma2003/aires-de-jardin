@@ -310,6 +310,7 @@ function render() {
     cliente: () => vistaFichaCliente(id),
     'cliente-editar': () => editorCliente(id, params),
     pedidos: vistaPedidos,
+    carrusel: vistaCarrusel,
     presupuestos: vistaPresupuestos,
     presupuesto: () => editorPresupuesto(id, params),
     facturas: vistaFacturas,
@@ -1623,6 +1624,123 @@ async function vistaPedidos() {
     if (id && PEDIDOS.find(p => p.id === id)?.estado === 'nuevo') { cambiarEstadoPedido(id, 'contactado'); setTimeout(dibujar, 300); }
   });
   dibujar();
+}
+
+// ═══════════════════════════════════════════════════════════
+// Carrusel de la portada de la web
+// ═══════════════════════════════════════════════════════════
+const WEB = 'https://airesdejardin.com.ar';
+const FOTOS_PREDETERMINADAS = [
+  ['carrusel-1.jpg', 'Jardín con borduras de boj recortadas en forma geométrica, rosales blancos y árboles al fondo'],
+  ['carrusel-2.jpg', 'Cantero curvo con formios, plantas de follaje rojo y helechos sobre césped'],
+  ['carrusel-3.jpg', 'Césped parejo con bordura de boj y senderos de piedra frente a una casa moderna'],
+  ['carrusel-4.jpg', 'Sendero de piedra partida entre borduras de boj con una casa de ladrillo al fondo'],
+  ['carrusel-5.jpg', 'Borduras redondeadas de boj junto a un camino de lajas y césped recién cortado'],
+];
+
+// Achica la foto en el navegador antes de subirla (máx. 1920 px, JPG) para que la web cargue rápido
+function prepararFoto(origen) {
+  return new Promise((ok, mal) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const escala = Math.min(1, 1920 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.naturalWidth * escala); c.height = Math.round(img.naturalHeight * escala);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      let calidad = 0.82, datos = c.toDataURL('image/jpeg', calidad);
+      while (datos.length > 1_300_000 && calidad > 0.5) { calidad -= 0.08; datos = c.toDataURL('image/jpeg', calidad); }
+      ok({ datos, vertical: c.height > c.width });
+      if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => mal(new Error('No se pudo leer la imagen'));
+    img.src = origen instanceof File ? URL.createObjectURL(origen) : origen;
+  });
+}
+
+async function vistaCarrusel() {
+  const titulo = cabecera('Carrusel de portada', 'Las fotos que pasan en el primer banner de airesdejardin.com.ar.',
+    `<a class="btn btn--secundario" href="${WEB}" target="_blank" rel="noopener">Ver la web ↗</a>
+     <label class="btn">+ Agregar fotos<input type="file" id="subirFotos" accept="image/jpeg,image/png,image/webp" multiple hidden></label>`);
+  vista.innerHTML = titulo + '<section class="tarjeta"><p class="vacio">Cargando fotos…</p></section>';
+  let fotos = [];
+  try { const r = await Datos.api('GET', '/carrusel'); fotos = r.fotos || []; }
+  catch { vista.innerHTML = titulo + '<section class="tarjeta"><p class="vacio">No hay conexión con el servidor.</p></section>'; return; }
+  if (rutaActual().seccion !== 'carrusel') return;
+
+  vista.innerHTML = titulo + `
+    <section class="tarjeta">
+      <div class="tarjeta__titulo"><h2>Fotos (${fotos.length})</h2><span class="ayuda">Pasan en este orden, una cada 6 segundos. Hasta 12 fotos.</span></div>
+      ${fotos.length ? '' : `<div class="aviso-carrusel">
+        <p>Todavía no cargaste fotos: la web muestra las <strong>5 fotos predeterminadas</strong>. Cuando agregues la primera, el carrusel pasa a mostrar solo las tuyas.</p>
+        <button class="btn btn--secundario btn--chico" id="importarPredeterminadas">Copiar las 5 predeterminadas acá para editarlas</button></div>`}
+      <div class="carrusel-admin" id="listaFotos">
+        ${(fotos.length ? fotos : FOTOS_PREDETERMINADAS.map(([f, alt]) => ({ url: `assets/img/hero/${f}`, alt, predeterminada: true }))).map((f, i, todas) => `
+        <article class="foto-carrusel${f.predeterminada ? ' foto-carrusel--muestra' : ''}" data-id="${f.id || ''}">
+          <div class="foto-carrusel__img"><img src="${esc(f.url)}" alt="" loading="lazy"><span class="foto-carrusel__num">${i + 1}</span></div>
+          ${f.predeterminada ? `<p class="foto-carrusel__alt">${esc(f.alt)}</p>` : `
+          <label class="campo"><span>Descripción (para buscadores y lectores de pantalla)</span><input class="alt" value="${esc(f.alt)}" maxlength="160" placeholder="Ej.: Cantero con formios y césped recién cortado"></label>
+          <div class="foto-carrusel__acciones">
+            <button class="btn btn--secundario btn--icono" data-mover="-1" ${i === 0 ? 'disabled' : ''} title="Mover antes">←</button>
+            <button class="btn btn--secundario btn--icono" data-mover="1" ${i === todas.length - 1 ? 'disabled' : ''} title="Mover después">→</button>
+            <button class="btn btn--peligro btn--chico" data-borrar>Borrar</button>
+          </div>`}
+        </article>`).join('')}
+      </div>
+      ${fotos.length ? '<div class="pie-form" style="position:static;background:none;padding-bottom:0"><button class="btn" id="guardarCarrusel">Guardar orden y descripciones</button></div>' : ''}
+    </section>
+    <p class="ayuda">Consejo: usá fotos <strong>horizontales</strong> y bien iluminadas. En el celular la foto se recorta a los costados, así que conviene que lo importante esté en el centro.</p>`;
+
+  const subir = async archivosOUrls => {
+    const lista = [...archivosOUrls];
+    if (fotos.length + lista.length > 12) { aviso(`Podés tener hasta 12 fotos (hay ${fotos.length}).`); return; }
+    let hechas = 0, verticales = 0;
+    for (const item of lista) {
+      estadoGuardado(`Subiendo foto ${hechas + 1} de ${lista.length}…`, 'guardando');
+      try {
+        const { datos, vertical } = await prepararFoto(item.url || item);
+        if (vertical) verticales++;
+        const r = await Datos.api('POST', '/carrusel', { imagen: datos, alt: item.alt || '' });
+        if (!r.ok) { aviso(r.error); break; }
+        hechas++;
+      } catch (e) { aviso(e.message || 'No se pudo subir una foto'); break; }
+    }
+    estadoGuardado('Guardado ✓', 'ok');
+    if (hechas) aviso(`${hechas} foto(s) agregada(s)${verticales ? `. ${verticales} es vertical: en la portada se va a recortar.` : ''}`);
+    vistaCarrusel();
+  };
+  $('#subirFotos').addEventListener('change', e => { if (e.target.files.length) subir(e.target.files); });
+  $('#importarPredeterminadas')?.addEventListener('click', () =>
+    subir(FOTOS_PREDETERMINADAS.map(([f, alt]) => ({ url: `assets/img/hero/${f}`, alt }))));
+
+  const lista = $('#listaFotos');
+  lista.addEventListener('click', e => {
+    const tarjeta = e.target.closest('.foto-carrusel');
+    if (e.target.closest('[data-mover]')) {
+      const paso = +e.target.closest('[data-mover]').dataset.mover;
+      const hermano = paso < 0 ? tarjeta.previousElementSibling : tarjeta.nextElementSibling;
+      if (hermano) { paso < 0 ? hermano.before(tarjeta) : hermano.after(tarjeta); renumerar(); }
+    }
+    if (e.target.closest('[data-borrar]')) {
+      confirmar('¿Borrar esta foto?', 'Deja de aparecer en la portada de la web.', 'Borrar', async () => {
+        try { await Datos.api('DELETE', '/carrusel/' + tarjeta.dataset.id); aviso('Foto borrada'); } catch { aviso('No se pudo borrar'); }
+        vistaCarrusel();
+      }, true);
+    }
+  });
+  const renumerar = () => $$('.foto-carrusel', lista).forEach((t, i, todas) => {
+    $('.foto-carrusel__num', t).textContent = i + 1;
+    const [antes, despues] = $$('[data-mover]', t);
+    if (antes) { antes.disabled = i === 0; despues.disabled = i === todas.length - 1; }
+  });
+  $('#guardarCarrusel')?.addEventListener('click', async () => {
+    const tarjetas = $$('.foto-carrusel', lista);
+    const textos = {}; tarjetas.forEach(t => { textos[t.dataset.id] = $('.alt', t).value.trim(); });
+    try {
+      const r = await Datos.api('PUT', '/carrusel', { orden: tarjetas.map(t => t.dataset.id), textos });
+      aviso(r.ok ? 'Carrusel guardado. La web ya muestra los cambios.' : r.error);
+    } catch { aviso('No hay conexión con el servidor'); }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════

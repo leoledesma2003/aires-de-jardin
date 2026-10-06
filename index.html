@@ -10,7 +10,7 @@
   <meta property="og:type" content="website">
   <meta property="og:title" content="Aires de Jardín | Paisajismo y mantenimiento de jardines">
   <meta property="og:description" content="Especialista en el cuidado de tus espacios verdes. Creatividad, practicidad y excelencia en Nordelta.">
-  <meta property="og:image" content="https://airesdejardin.com.ar/assets/img/hero/portada.jpg">
+  <meta property="og:image" content="https://airesdejardin.com.ar/assets/img/hero/carrusel-1.jpg">
   <meta property="og:url" content="https://airesdejardin.com.ar/">
   <link rel="canonical" href="https://airesdejardin.com.ar/">
   <meta property="og:locale" content="es_AR">
@@ -72,7 +72,15 @@
 
 <!-- ═══════════ INICIO ═══════════ -->
 <section class="portada" id="inicio">
-  <img class="portada__foto" src="assets/img/hero/portada.jpg" alt="Jardín con borduras de boj recortadas en forma geométrica, rosales blancos y árboles al fondo" fetchpriority="high">
+  <!-- Carrusel: estas son las fotos predeterminadas. Si en el panel se cargaron
+       otras, js/sitio.js las trae de la API y reemplaza estas. -->
+  <div class="carrusel" id="carrusel" aria-roledescription="carrusel" aria-label="Fotos de jardines">
+    <img class="carrusel__foto activa" src="assets/img/hero/carrusel-1.jpg" alt="Jardín con borduras de boj recortadas en forma geométrica, rosales blancos y árboles al fondo" fetchpriority="high">
+    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-2.jpg" alt="Cantero curvo con formios, plantas de follaje rojo y helechos sobre césped">
+    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-3.jpg" alt="Césped parejo con bordura de boj y senderos de piedra frente a una casa moderna">
+    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-4.jpg" alt="Sendero de piedra partida entre borduras de boj con una casa de ladrillo al fondo">
+    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-5.jpg" alt="Borduras redondeadas de boj junto a un camino de lajas y césped recién cortado">
+  </div>
   <div class="portada__velo"></div>
   <div class="contenedor portada__contenido">
     <p class="portada__antetitulo">Paisajismo y mantenimiento · Nordelta</p>
@@ -88,6 +96,7 @@
       <a href="https://wa.me/5491167205790?text=Hola%20Aires%20de%20Jard%C3%ADn%2C%20quisiera%20consultar%20por%20el%20mantenimiento%20de%20mi%20jard%C3%ADn." class="boton boton--claro" target="_blank" rel="noopener">Escribinos por WhatsApp</a>
     </div>
   </div>
+  <div class="carrusel__puntos" id="carruselPuntos" role="group" aria-label="Elegir foto"></div>
 </section>
 
 <!-- ═══════════ SERVICIOS ═══════════ -->

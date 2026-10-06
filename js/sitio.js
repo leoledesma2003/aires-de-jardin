@@ -9,6 +9,83 @@ const marcarSombra = () => encabezado.classList.toggle('con-sombra', window.scro
 window.addEventListener('scroll', marcarSombra, { passive: true });
 marcarSombra();
 
+// ─── Carrusel de la portada ───
+// Arranca con las fotos que vienen en el HTML. Si en el panel se cargaron
+// fotos propias, las pide a la API y pasa a mostrar esas.
+const API_CARRUSEL = 'https://api.airesdejardin.com.ar/carrusel';
+const DURACION_FOTO = 6000;
+const carrusel = document.getElementById('carrusel');
+const puntos = document.getElementById('carruselPuntos');
+let fotosCarrusel = [...carrusel.querySelectorAll('.carrusel__foto')];
+let fotoCarrusel = 0;
+let timerCarrusel = null;
+
+function cargarFoto(img) {
+  if (img && !img.src && img.dataset.src) img.src = img.dataset.src;
+}
+
+function dibujarPuntos() {
+  puntos.innerHTML = fotosCarrusel.length > 1
+    ? fotosCarrusel.map((_, i) => `<button type="button" aria-label="Foto ${i + 1} de ${fotosCarrusel.length}"></button>`).join('')
+    : '';
+  puntos.style.setProperty('--duracion', DURACION_FOTO + 'ms');
+}
+
+function mostrarFotoCarrusel(i) {
+  const anterior = fotosCarrusel[fotoCarrusel];
+  fotoCarrusel = (i + fotosCarrusel.length) % fotosCarrusel.length;
+  const actual = fotosCarrusel[fotoCarrusel];
+  fotosCarrusel.forEach(f => f.classList.remove('saliendo'));
+  if (anterior && anterior !== actual) { anterior.classList.remove('activa'); anterior.classList.add('saliendo'); }
+  cargarFoto(actual);
+  // reiniciar la animación de zoom
+  actual.classList.remove('activa'); void actual.offsetWidth; actual.classList.add('activa');
+  cargarFoto(fotosCarrusel[(fotoCarrusel + 1) % fotosCarrusel.length]); // precargar la siguiente
+  [...puntos.children].forEach((b, k) => {
+    b.classList.remove('activo'); void b.offsetWidth;
+    b.classList.toggle('activo', k === fotoCarrusel);
+    b.setAttribute('aria-current', k === fotoCarrusel ? 'true' : 'false');
+  });
+  programarCarrusel();
+}
+
+function programarCarrusel() {
+  clearTimeout(timerCarrusel);
+  if (fotosCarrusel.length > 1 && !document.hidden) timerCarrusel = setTimeout(() => mostrarFotoCarrusel(fotoCarrusel + 1), DURACION_FOTO);
+}
+
+puntos.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (b) mostrarFotoCarrusel([...puntos.children].indexOf(b));
+});
+document.addEventListener('visibilitychange', programarCarrusel);
+dibujarPuntos();
+mostrarFotoCarrusel(0);
+
+(async () => {
+  try {
+    const control = new AbortController();
+    setTimeout(() => control.abort(), 6000);
+    const r = await fetch(API_CARRUSEL, { signal: control.signal });
+    const { fotos } = await r.json();
+    if (!Array.isArray(fotos) || !fotos.length) return;
+    // Agrega las fotos del panel y saca las predeterminadas cuando ya no se ven
+    const nuevas = fotos.map(f => Object.assign(document.createElement('img'), { className: 'carrusel__foto', alt: f.alt || 'Jardín realizado por Aires de Jardín' }));
+    nuevas.forEach((img, k) => { img.dataset.src = fotos[k].url; carrusel.appendChild(img); });
+    const viejas = fotosCarrusel.filter(f => !f.classList.contains('activa'));
+    viejas.forEach(f => f.remove());
+    const visible = fotosCarrusel.find(f => f.classList.contains('activa'));
+    fotosCarrusel = nuevas;
+    fotoCarrusel = -1;
+    dibujarPuntos();
+    cargarFoto(nuevas[0]);
+    nuevas[0].addEventListener('load', () => {
+      mostrarFotoCarrusel(0);
+      setTimeout(() => visible?.remove(), 2000);
+    }, { once: true });
+  } catch { /* sin conexión con la API: quedan las fotos predeterminadas */ }
+})();
+
 // ─── Menú del celular ───
 const menuBoton = document.getElementById('menuBoton');
 const menu = document.getElementById('menu');
