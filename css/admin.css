@@ -96,7 +96,36 @@ a { color: inherit; }
   text-transform: uppercase;
   color: #8C9A7C;
 }
-.lateral__web { margin-top: auto; padding: 14px 12px 0; font-size: .85rem; color: #AEBBA0; text-decoration: none; }
+.lateral__pie { margin-top: auto; padding: 14px 12px 0; display: grid; gap: 8px; }
+.lateral__web { font-size: .85rem; color: #AEBBA0; text-decoration: none; }
+.lateral__salir { justify-self: start; padding: 0; border: 0; background: none; font: 500 .85rem var(--sans); color: #AEBBA0; cursor: pointer; }
+.lateral__salir:hover { color: var(--blanco); }
+.contador { margin-left: auto; min-width: 22px; padding: 1px 7px; border-radius: 999px; background: var(--lima); color: var(--verde-profundo); font-size: .75rem; font-weight: 700; text-align: center; }
+.lateral__menu a.activo .contador { background: var(--verde-profundo); color: var(--lima); }
+.contador[hidden] { display: none; }
+
+/* Estado del guardado en la nube */
+.barra__estado { margin-left: auto; font-size: .8rem; color: var(--gris-claro); }
+.barra__estado[data-tipo="guardando"] { color: var(--ambar); }
+.barra__estado[data-tipo="error"] { color: var(--rojo); font-weight: 600; }
+.barra__aviso[hidden] { display: none; }
+
+/* Pantalla de ingreso */
+.ingreso { position: fixed; inset: 0; z-index: 95; display: grid; place-items: center; padding: 20px; background: var(--verde-profundo); }
+.ingreso[hidden] { display: none; }
+.ingreso__caja { width: 100%; max-width: 380px; background: var(--blanco); border-radius: 18px; padding: 30px 28px; display: grid; gap: 16px; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+.ingreso__caja img { width: 210px; height: auto; margin: 0 auto 4px; }
+.ingreso__caja h1 { font-size: 1.35rem; text-align: center; }
+.ingreso__error { margin: 0; min-height: 1.2em; color: var(--rojo); font-size: .9rem; text-align: center; }
+
+/* Pedidos de la web */
+.pedido { padding: 16px 0; border-bottom: 1px solid var(--borde); }
+.pedido:first-child { padding-top: 0; }
+.pedido__cab { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.pedido__cab .sub { display: block; font-size: .82rem; color: var(--gris-claro); margin-top: 2px; }
+.pedido__estado { width: auto; padding: 5px 8px; font-size: .82rem; }
+.pedido__datos { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 8px; font-size: .9rem; color: var(--gris); }
+.pedido__mensaje { margin: 10px 0 0; padding: 10px 14px; border-radius: 10px; background: var(--fondo); font-size: .92rem; }
 .lateral__web:hover { color: var(--lima); }
 
 .principal { min-width: 0; display: flex; flex-direction: column; }

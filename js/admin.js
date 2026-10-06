@@ -1,9 +1,10 @@
 // Aires de Jardín — panel de administración
 //
-// MODO DEMOSTRACIÓN: por ahora todo se guarda en el navegador (localStorage),
-// porque todavía no hay hosting con PHP. Cuando lo haya, `Datos.cargar` y
-// `Datos.guardar` pasan a hablar con un api.php que guarde el mismo objeto
-// en data/*.json (como en Wartung); el resto del panel no cambia.
+// Los datos se guardan en la nube: la API de cloudflare/worker.js
+// (https://api.airesdejardin.com.ar) guarda todo el panel como un único JSON
+// en una base D1, con contraseña. En este navegador queda además una copia
+// (localStorage) por las dudas. Si algún día se pasa a un hosting con PHP,
+// alcanza con cambiar `Datos` para que hable con un api.php.
 //
 // Los documentos se arman como una hoja A4 en HTML y se guardan en PDF con
 // "Imprimir → Guardar como PDF".
@@ -69,16 +70,70 @@ function linkWa(tel, texto) {
 // ═══════════════════════════════════════════════════════════
 // Datos
 // ═══════════════════════════════════════════════════════════
+const API = 'https://api.airesdejardin.com.ar';
+const CLAVE_SESION = 'adj-sesion';
+const leerLocal = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const escribirLocal = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* sin acceso */ } };
+
 const Datos = {
-  cargar() {
-    try { const t = localStorage.getItem(CLAVE); if (t) return JSON.parse(t); } catch (e) { /* sin acceso */ }
-    return null;
+  sesion: leerLocal(CLAVE_SESION),
+  version: 0,      // versión del servidor sobre la que estamos trabajando
+  enviando: false,
+  pendiente: false,
+  timer: null,
+
+  async api(metodo, ruta, cuerpo) {
+    const r = await fetch(API + ruta, {
+      method: metodo,
+      headers: { 'Content-Type': 'application/json', ...(this.sesion ? { Authorization: 'Bearer ' + this.sesion } : {}) },
+      body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
+    });
+    const d = await r.json().catch(() => ({ ok: false, error: 'Respuesta inválida del servidor' }));
+    if (r.status === 401 && ruta !== '/login' && ruta !== '/clave') { cerrarSesion('La sesión venció. Volvé a ingresar.'); throw new Error(d.error); }
+    return { status: r.status, ...d };
   },
+
+  // Se llama después de cada cambio: guarda una copia local y manda todo a la
+  // nube (agrupando cambios seguidos en un solo envío)
   guardar() {
-    try { localStorage.setItem(CLAVE, JSON.stringify(DB)); }
-    catch (e) { aviso('No se pudo guardar en este navegador'); }
+    escribirLocal(CLAVE, JSON.stringify(DB));
+    this.pendiente = true;
+    estadoGuardado('Guardando…', 'guardando');
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => { this.timer = null; this.enviar(); }, 400);
+  },
+
+  async enviar() {
+    // Si ya hay un envío en curso, el cambio queda pendiente y se manda al terminar
+    if (this.enviando || !this.pendiente) return;
+    this.enviando = true; this.pendiente = false;
+    try {
+      const r = await this.api('PUT', '/datos', { db: DB, version: this.version });
+      if (r.ok) { this.version = r.version; estadoGuardado('Guardado ✓', 'ok'); }
+      else if (r.conflicto) {
+        DB = normalizar(r.db); this.version = r.version;
+        estadoGuardado('Guardado ✓', 'ok');
+        aviso('Había cambios hechos desde otro dispositivo: se cargó la versión más nueva. Revisá lo último que hiciste.');
+        render();
+      } else { estadoGuardado('No se pudo guardar: ' + r.error, 'error'); }
+    } catch (e) {
+      if (this.sesion) {
+        this.pendiente = true; estadoGuardado('Sin conexión: reintentando…', 'error');
+        this.timer = setTimeout(() => { this.timer = null; this.enviar(); }, 5000);
+      }
+    } finally {
+      this.enviando = false;
+      if (this.pendiente && !this.timer) this.enviar();
+    }
   },
 };
+// Avisar si se cierra la pestaña con cambios sin subir
+window.addEventListener('beforeunload', e => { if (Datos.pendiente || Datos.enviando) { e.preventDefault(); e.returnValue = ''; } });
+
+function estadoGuardado(texto, tipo) {
+  const el = $('#estadoGuardado');
+  if (el) { el.textContent = texto; el.dataset.tipo = tipo; }
+}
 
 function ajustesBase() {
   return {
@@ -161,12 +216,14 @@ function conceptosBase(valores = {}) {
   return c;
 }
 
-let DB = Datos.cargar() || datosEjemplo();
-// Por si el guardado es de una versión anterior
-DB = Object.assign(datosVacios(), DB);
-DB.ajustes = Object.assign(ajustesBase(), DB.ajustes);
-DB.contadores = Object.assign({ P: 1, X: 1, OC: 1, R: 1 }, DB.contadores);
-Datos.guardar();
+// Completa lo que falte si los datos vienen de una versión anterior del panel
+function normalizar(datos) {
+  const d = Object.assign(datosVacios(), datos);
+  d.ajustes = Object.assign(ajustesBase(), d.ajustes);
+  d.contadores = Object.assign({ P: 1, X: 1, OC: 1, R: 1 }, d.contadores);
+  return d;
+}
+let DB = datosVacios();
 
 // ─── Cálculos ───
 const totalFactura = f => f.items.reduce((s, i) => s + n0(i.importe), 0);
@@ -243,15 +300,16 @@ function render() {
   const menu = SECCION_MENU[seccion] || seccion;
   $$('#menu a').forEach(a => a.classList.toggle('activo', a.dataset.seccion === menu));
   $('#lateral').classList.remove('abierto');
-  $('#avisoDemo').textContent = DB.demo
-    ? 'Modo demostración: hay datos de ejemplo y todo se guarda solo en este navegador.'
-    : 'Los datos se guardan solo en este navegador. Hacé una copia de respaldo en Ajustes.';
+  $('#avisoDemo').hidden = !DB.demo;
+  $('#avisoDemo').textContent = 'Hay datos de ejemplo cargados. Cuando empieces a usarlo en serio, borralos desde Ajustes.';
+  actualizarContadorPedidos();
 
   const vistas = {
     inicio: vistaInicio,
     clientes: vistaClientes,
     cliente: () => vistaFichaCliente(id),
-    'cliente-editar': () => editorCliente(id),
+    'cliente-editar': () => editorCliente(id, params),
+    pedidos: vistaPedidos,
     presupuestos: vistaPresupuestos,
     presupuesto: () => editorPresupuesto(id, params),
     facturas: vistaFacturas,
@@ -515,9 +573,11 @@ function vistaFichaCliente(id) {
   dibujar('');
 }
 
-function editorCliente(id) {
+function editorCliente(id, params) {
   const nuevo = id === 'nuevo';
-  const c = nuevo ? { tipo: 'particular', nombre: '', barrio: '', lote: '', telefono: '', email: '', direccion: '', abono: 0, notas: '' } : cliente(id);
+  const pedido = nuevo ? PEDIDOS.find(x => x.id === params?.get('pedido')) : null;
+  const c = nuevo ? { tipo: 'particular', nombre: pedido?.nombre || '', barrio: pedido?.barrio || '', lote: pedido?.lote || '', telefono: pedido?.telefono || '',
+    email: pedido?.email || '', direccion: '', abono: 0, notas: pedido ? `Llegó por la web (${fechaAR(pedido.fecha.slice(0, 10))}). ${pedido.servicio ? 'Servicio: ' + pedido.servicio + '. ' : ''}${pedido.mensaje || ''}`.trim() : '' } : cliente(id);
   if (!c) { ir('clientes'); return; }
   vista.innerHTML = cabecera(nuevo ? 'Nuevo cliente' : 'Editar cliente', 'Cada cliente se identifica por barrio + lote.', '',
     nuevo ? ['#clientes', 'Clientes'] : [`#cliente/${id}`, c.nombre]) + `
@@ -547,6 +607,7 @@ function editorCliente(id) {
     datos.abono = n0(datos.abono);
     if (nuevo) { datos.id = uid(); DB.clientes.push(datos); } else Object.assign(c, datos);
     Datos.guardar(); aviso('Cliente guardado'); ir(`cliente/${nuevo ? datos.id : id}`);
+    if (pedido) cambiarEstadoPedido(pedido.id, 'cliente', datos.id);
   });
   $('#borrar')?.addEventListener('click', () => {
     const tiene = todosLosDocumentos().some(d => d.clienteId === id);
@@ -1220,9 +1281,19 @@ function vistaAjustes() {
       </div>
       <div class="pie-form" style="position:static"><button class="btn">Guardar ajustes</button></div>
     </form>
+    <form class="tarjeta" id="formClave">
+      <div class="tarjeta__titulo"><h2>Contraseña del panel</h2></div>
+      <div class="campos">
+        <label class="campo"><span>Contraseña actual</span><input type="password" name="actual" required autocomplete="current-password"></label>
+        <label class="campo"><span>Contraseña nueva</span><input type="password" name="nueva" required minlength="8" autocomplete="new-password"></label>
+        <label class="campo"><span>Repetir la nueva</span><input type="password" name="repetir" required minlength="8" autocomplete="new-password"></label>
+        <div class="campo" style="align-content:end"><button class="btn btn--secundario">Cambiar contraseña</button></div>
+      </div>
+      <p class="ayuda" style="margin:10px 0 0">Al cambiarla se cierra la sesión en los demás dispositivos.</p>
+    </form>
     <section class="tarjeta">
       <div class="tarjeta__titulo"><h2>Copia de respaldo</h2></div>
-      <p class="ayuda" style="margin-top:0">Mientras no haya hosting, los datos viven solo en este navegador. Descargá una copia seguido y guardala en un lugar seguro.</p>
+      <p class="ayuda" style="margin-top:0">Los datos se guardan en la nube y además quedan las últimas 60 versiones por si hay que recuperar algo. Igual conviene descargar una copia cada tanto y guardarla en un lugar seguro.</p>
       <div class="cabecera__acciones">
         <button class="btn btn--secundario" id="exportar">Descargar copia</button>
         <label class="btn btn--secundario">Restaurar copia<input type="file" id="importar" accept="application/json" hidden></label>
@@ -1237,6 +1308,17 @@ function vistaAjustes() {
     DB.contadores = { P: Math.max(1, n0(d.nP)), X: Math.max(1, n0(d.nX)), OC: Math.max(1, n0(d.nOC)), R: Math.max(1, n0(d.nR)) };
     Datos.guardar(); aviso('Ajustes guardados');
   });
+  $('#formClave').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = e.target;
+    if (f.nueva.value !== f.repetir.value) { aviso('Las dos contraseñas nuevas no coinciden'); return; }
+    try {
+      const r = await Datos.api('POST', '/clave', { actual: f.actual.value, nueva: f.nueva.value });
+      if (!r.ok) { aviso(r.error); return; }
+      Datos.sesion = r.token; escribirLocal(CLAVE_SESION, r.token);
+      f.reset(); aviso('Contraseña cambiada');
+    } catch { aviso('No hay conexión con el servidor'); }
+  });
   $('#exportar').addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' });
     const link = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `aires-de-jardin-respaldo-${hoyISO()}.json` });
@@ -1249,7 +1331,7 @@ function vistaAjustes() {
       const datos = JSON.parse(await archivo.text());
       if (!Array.isArray(datos.clientes)) throw new Error();
       confirmar('Restaurar copia', 'Se reemplazan todos los datos actuales por los de la copia.', 'Restaurar', () => {
-        DB = Object.assign(datosVacios(), datos); DB.ajustes = Object.assign(ajustesBase(), DB.ajustes);
+        DB = normalizar(datos);
         Datos.guardar(); aviso('Copia restaurada'); ir('inicio'); render();
       }, true);
     } catch { aviso('Ese archivo no es una copia válida'); }
@@ -1474,5 +1556,138 @@ document.addEventListener('keydown', e => {
   else if (!$('#modalDoc').hidden) cerrarDocumento();
 });
 
-window.addEventListener('hashchange', render);
-render();
+// ═══════════════════════════════════════════════════════════
+// Pedidos de la web (formulario "Pedí tu presupuesto")
+// ═══════════════════════════════════════════════════════════
+let PEDIDOS = [];
+const ESTADOS_PEDIDO = { nuevo: ['Nuevo', 'ambar'], contactado: ['Contactado', 'azul'], cliente: ['Ya es cliente', 'verde'], descartado: ['Descartado', 'gris'] };
+
+async function cargarPedidos() {
+  try { const r = await Datos.api('GET', '/pedidos'); if (r.ok) PEDIDOS = r.pedidos; } catch { /* sin conexión */ }
+  actualizarContadorPedidos();
+}
+function actualizarContadorPedidos() {
+  const n = PEDIDOS.filter(p => p.estado === 'nuevo').length;
+  const el = $('#contadorPedidos');
+  if (el) { el.textContent = n; el.hidden = !n; }
+}
+async function cambiarEstadoPedido(id, estado, clienteId) {
+  const p = PEDIDOS.find(x => x.id === id);
+  if (p) { p.estado = estado; if (clienteId) p.clienteId = clienteId; }
+  actualizarContadorPedidos();
+  try { await Datos.api('PATCH', '/pedido', { id, estado, clienteId }); } catch { aviso('No se pudo actualizar el pedido'); }
+}
+
+async function vistaPedidos() {
+  vista.innerHTML = cabecera('Pedidos de la web', 'Lo que llega desde el formulario "Pedí tu presupuesto" de airesdejardin.com.ar.') +
+    '<section class="tarjeta"><p class="vacio">Cargando pedidos…</p></section>';
+  await cargarPedidos();
+  if (rutaActual().seccion !== 'pedidos') return;
+  vista.innerHTML = cabecera('Pedidos de la web', 'Lo que llega desde el formulario "Pedí tu presupuesto" de airesdejardin.com.ar.') + `
+    <section class="tarjeta">
+      <div class="filtros"><select id="estado"><option value="">Todos</option>${Object.entries(ESTADOS_PEDIDO).map(([k, v]) => `<option value="${k}" ${k === 'nuevo' ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></div>
+      <div id="listaPedidos"></div>
+    </section>`;
+  const dibujar = () => {
+    const est = $('#estado').value;
+    const lista = PEDIDOS.filter(p => !est || p.estado === est);
+    $('#listaPedidos').innerHTML = lista.map(p => {
+      const wa = linkWa(p.telefono, `Hola ${p.nombre.split(' ')[0]}, te escribimos de Aires de Jardín por tu pedido de presupuesto${p.servicio ? ' de ' + p.servicio.toLowerCase() : ''}.`);
+      const [t, c] = ESTADOS_PEDIDO[p.estado] || [p.estado, 'gris'];
+      return `<article class="pedido" data-id="${p.id}">
+        <div class="pedido__cab"><div><strong>${esc(p.nombre)}</strong> <span class="estado estado--${c}">${t}</span>
+          <span class="sub">${new Date(p.fecha).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}${p.servicio ? ' · ' + esc(p.servicio) : ''}</span></div>
+          <div class="cabecera__acciones">
+            ${wa ? `<a class="btn btn--secundario btn--chico" href="${wa}" target="_blank" rel="noopener" data-contactar>WhatsApp</a>` : ''}
+            ${p.estado === 'cliente' && p.clienteId ? `<a class="btn btn--secundario btn--chico" href="#cliente/${p.clienteId}">Ver ficha</a>` : `<a class="btn btn--chico" href="#cliente-editar/nuevo?pedido=${p.id}">Crear cliente</a>`}
+            <select class="pedido__estado">${Object.entries(ESTADOS_PEDIDO).map(([k, v]) => `<option value="${k}" ${k === p.estado ? 'selected' : ''}>${v[0]}</option>`).join('')}</select>
+          </div></div>
+        <div class="pedido__datos">
+          <span>📞 ${esc(p.telefono)}</span>${p.email ? `<span>✉️ <a href="mailto:${esc(p.email)}">${esc(p.email)}</a></span>` : ''}
+          ${p.barrio || p.lote ? `<span>📍 ${esc(p.barrio)}${p.lote ? ' · lote ' + esc(p.lote) : ''}</span>` : ''}
+        </div>
+        ${p.mensaje ? `<p class="pedido__mensaje">${esc(p.mensaje).replace(/\n/g, '<br>')}</p>` : ''}
+      </article>`;
+    }).join('') || `<p class="vacio">${est === 'nuevo' ? 'No hay pedidos nuevos. 🎉' : 'No hay pedidos.'}</p>`;
+  };
+  $('#estado').addEventListener('change', dibujar);
+  $('#listaPedidos').addEventListener('change', async e => {
+    if (!e.target.matches('.pedido__estado')) return;
+    await cambiarEstadoPedido(e.target.closest('[data-id]').dataset.id, e.target.value);
+    dibujar();
+  });
+  // Escribirle por WhatsApp a un pedido nuevo lo pasa a "Contactado"
+  $('#listaPedidos').addEventListener('click', e => {
+    const a = e.target.closest('[data-contactar]');
+    const id = a?.closest('[data-id]').dataset.id;
+    if (id && PEDIDOS.find(p => p.id === id)?.estado === 'nuevo') { cambiarEstadoPedido(id, 'contactado'); setTimeout(dibujar, 300); }
+  });
+  dibujar();
+}
+
+// ═══════════════════════════════════════════════════════════
+// Ingreso con contraseña y arranque
+// ═══════════════════════════════════════════════════════════
+function pantallaIngreso(mensaje = '') {
+  const el = $('#ingreso');
+  el.hidden = false;
+  $('#ingresoError').textContent = mensaje;
+  $('#ingresoClave').value = '';
+  $('#ingresoClave').focus();
+}
+function cerrarSesion(mensaje) {
+  Datos.sesion = null; escribirLocal(CLAVE_SESION, null);
+  pantallaIngreso(mensaje);
+}
+$('#formIngreso').addEventListener('submit', async e => {
+  e.preventDefault();
+  const boton = $('#ingresoBoton');
+  boton.disabled = true; boton.textContent = 'Ingresando…'; $('#ingresoError').textContent = '';
+  try {
+    const r = await Datos.api('POST', '/login', { clave: $('#ingresoClave').value });
+    if (!r.ok) { $('#ingresoError').textContent = r.error; return; }
+    Datos.sesion = r.token; escribirLocal(CLAVE_SESION, r.token);
+    $('#ingreso').hidden = true;
+    iniciar();
+  } catch { $('#ingresoError').textContent = 'No hay conexión con el servidor. Revisá internet y probá de nuevo.'; }
+  finally { boton.disabled = false; boton.textContent = 'Ingresar'; }
+});
+$('#salir').addEventListener('click', () => confirmar('Cerrar sesión', 'Vas a tener que volver a poner la contraseña para entrar.', 'Cerrar sesión', () => cerrarSesion('')));
+
+let arrancado = false;
+async function iniciar() {
+  if (!Datos.sesion) { pantallaIngreso(); return; }
+  vista.innerHTML = '<p class="vacio">Cargando datos…</p>';
+  let r;
+  try { r = await Datos.api('GET', '/datos'); }
+  catch (e) {
+    if (!Datos.sesion) return; // la sesión venció: ya se mostró el ingreso
+    vista.innerHTML = `<section class="tarjeta"><p class="vacio">No hay conexión con el servidor.</p><button class="btn" onclick="iniciar()">Reintentar</button></section>`;
+    return;
+  }
+  if (!r.ok) { vista.innerHTML = `<section class="tarjeta"><p class="vacio">${esc(r.error)}</p></section>`; return; }
+  const arrancar = () => {
+    estadoGuardado('Guardado ✓', 'ok');
+    if (!arrancado) { arrancado = true; window.addEventListener('hashchange', render); }
+    render();
+    cargarPedidos();
+  };
+  if (r.db) { DB = normalizar(r.db); Datos.version = r.version; arrancar(); return; }
+
+  // Primera vez: la nube está vacía
+  Datos.version = 0;
+  let local = null;
+  try { local = JSON.parse(leerLocal(CLAVE) || 'null'); } catch { /* nada */ }
+  const resumen = local && Array.isArray(local.clientes) ? `${local.clientes.length} cliente(s), ${(local.facturas || []).length} factura(s)` : '';
+  dialogo(`<h2>¡Bienvenido al panel!</h2><p>Es la primera vez que se usa en la nube. ¿Con qué datos arrancamos?</p>
+    <div style="display:grid;gap:10px">
+      <button class="btn" data-op="vacio">Empezar de cero</button>
+      ${resumen ? `<button class="btn btn--secundario" data-op="local">Subir lo que tengo en esta compu (${resumen}${local.demo ? ', de ejemplo' : ''})</button>` : ''}
+      <button class="btn btn--secundario" data-op="ejemplo">Cargar datos de ejemplo para probar</button>
+    </div>`, (d, cerrar) => $$('[data-op]', d).forEach(b => b.addEventListener('click', () => {
+    DB = b.dataset.op === 'local' ? normalizar(local) : b.dataset.op === 'ejemplo' ? datosEjemplo() : datosVacios();
+    cerrar(); Datos.guardar(); arrancar();
+  })));
+}
+
+iniciar();

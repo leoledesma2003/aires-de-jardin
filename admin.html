@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="es-AR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Panel | Aires de Jardín</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/logo/favicon-32.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+<div class="app">
+  <!-- ═══════════ Menú lateral ═══════════ -->
+  <aside class="lateral" id="lateral">
+    <div class="lateral__marca">
+      <img src="assets/logo/logo-claro.png" alt="Aires de Jardín" width="720" height="288">
+      <span>Panel de administración</span>
+    </div>
+    <nav class="lateral__menu" id="menu">
+      <a href="#inicio" data-seccion="inicio"><svg viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z"/></svg>Inicio</a>
+      <a href="#clientes" data-seccion="clientes"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.5-3.5 3.2-5.5 6.5-5.5s6 2 6.5 5.5M16 4.8a3.5 3.5 0 010 6.4M18.5 14.8c1.8.8 2.8 2.6 3 5.2"/></svg>Clientes</a>
+      <a href="#pedidos" data-seccion="pedidos"><svg viewBox="0 0 24 24"><path d="M4 4h16v12H8l-4 4zM8 9h8M8 12h5"/></svg>Pedidos de la web<span class="contador" id="contadorPedidos" hidden></span></a>
+      <p class="lateral__grupo">Documentos</p>
+      <a href="#presupuestos" data-seccion="presupuestos"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7"/></svg>Presupuestos</a>
+      <a href="#facturas" data-seccion="facturas"><svg viewBox="0 0 24 24"><path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2zM9 8h6M9 12h6M9 16h3"/></svg>Facturas X</a>
+      <a href="#cobros" data-seccion="cobros"><svg viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 9.5v5M18 9.5v5"/></svg>Recibos de cobro</a>
+      <a href="#ordenes" data-seccion="ordenes"><svg viewBox="0 0 24 24"><path d="M3 4h2l2.4 11h11L21 7H7M9.5 20a1 1 0 100-.1M17.5 20a1 1 0 100-.1"/></svg>Órdenes de compra</a>
+      <p class="lateral__grupo">Equipo</p>
+      <a href="#personal" data-seccion="personal"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M9 6V4h6v2M3 12h18"/></svg>Personal y recibos</a>
+      <p class="lateral__grupo">Sistema</p>
+      <a href="#ajustes" data-seccion="ajustes"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>Ajustes</a>
+    </nav>
+    <div class="lateral__pie">
+      <a class="lateral__web" href="index.html" target="_blank">Ver la web pública ↗</a>
+      <button class="lateral__salir" id="salir">Cerrar sesión</button>
+    </div>
+  </aside>
+
+  <!-- ═══════════ Contenido ═══════════ -->
+  <div class="principal">
+    <header class="barra">
+      <button class="barra__menu" id="abrirMenu" aria-label="Abrir menú"><span></span><span></span><span></span></button>
+      <div class="barra__aviso" id="avisoDemo" hidden></div>
+      <span class="barra__estado" id="estadoGuardado"></span>
+    </header>
+    <main class="vista" id="vista"></main>
+  </div>
+</div>
+
+<!-- Ingreso con contraseña -->
+<div class="ingreso" id="ingreso" hidden>
+  <form class="ingreso__caja" id="formIngreso">
+    <img src="assets/logo/logo-web.png" alt="Aires de Jardín" width="720" height="288">
+    <h1>Panel de administración</h1>
+    <label class="campo"><span>Contraseña</span><input type="password" id="ingresoClave" required autocomplete="current-password"></label>
+    <button class="btn" id="ingresoBoton">Ingresar</button>
+    <p class="ingreso__error" id="ingresoError" role="alert"></p>
+  </form>
+</div>
+
+<!-- Ventana para ver / imprimir documentos -->
+<div class="modal" id="modalDoc" hidden>
+  <div class="modal__barra">
+    <strong id="modalDocTitulo">Documento</strong>
+    <div class="modal__acciones" id="modalDocAcciones"></div>
+    <button class="btn btn--fantasma" id="modalDocCerrar">Cerrar ✕</button>
+  </div>
+  <div class="modal__papel"><div class="hoja" id="hoja"></div></div>
+</div>
+
+<!-- Ventana de diálogo simple -->
+<div class="dialogo" id="dialogo" hidden>
+  <div class="dialogo__caja" id="dialogoCaja"></div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="js/admin.js"></script>
+</body>
+</html>

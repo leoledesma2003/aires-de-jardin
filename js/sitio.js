@@ -112,10 +112,11 @@ const formulario = document.getElementById('formulario');
 const formularioBoton = document.getElementById('formularioBoton');
 const aviso = document.getElementById('formularioAviso');
 const abiertoEn = Date.now();
-// En hostings sin PHP (GitHub Pages) o abriendo el archivo directo en la compu,
-// el formulario no se puede guardar: se manda el pedido armado por WhatsApp.
+// En GitHub Pages no hay PHP: el pedido va a la API de Cloudflare (el mismo
+// servidor del panel). Con un hosting con PHP se usa contacto.php.
 const SIN_PHP = location.protocol === 'file:' || location.hostname.endsWith('github.io')
   || document.documentElement.dataset.sinPhp === 'true'; // lo marca publicar-github.sh
+const DESTINO_FORMULARIO = SIN_PHP ? 'https://api.airesdejardin.com.ar/pedido' : 'contacto.php';
 
 function linkWhatsapp(datos) {
   const texto = [
@@ -153,19 +154,13 @@ formulario.addEventListener('submit', async e => {
     return;
   }
 
-  if (SIN_PHP) {
-    window.open(linkWhatsapp(datos), '_blank', 'noopener');
-    mostrarAviso('ok', '¡Listo! Te abrimos WhatsApp con tu pedido armado: solo tocá enviar.');
-    return;
-  }
-
   datos.segundos = Math.round((Date.now() - abiertoEn) / 1000);
   formularioBoton.disabled = true;
   formularioBoton.textContent = 'Enviando…';
   mostrarAviso('', '');
 
   try {
-    const r = await fetch('contacto.php', {
+    const r = await fetch(DESTINO_FORMULARIO, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(datos),
