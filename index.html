@@ -21,6 +21,9 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Marcellus&family=Pinyon+Script&family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- La primera foto del carrusel empieza a bajar enseguida (vertical en celular, horizontal en compu) -->
+  <link rel="preload" as="image" href="assets/img/hero/carrusel-1-movil.jpg" media="(max-width: 700px) and (orientation: portrait)" fetchpriority="high">
+  <link rel="preload" as="image" href="assets/img/hero/carrusel-1.jpg" media="not all and (max-width: 700px) and (orientation: portrait)" fetchpriority="high">
   <link rel="stylesheet" href="css/estilos.css">
 
   <script type="application/ld+json">
@@ -75,11 +78,11 @@
   <!-- Carrusel: estas son las fotos predeterminadas. Si en el panel se cargaron
        otras, js/sitio.js las trae de la API y reemplaza estas. -->
   <div class="carrusel" id="carrusel" aria-roledescription="carrusel" aria-label="Fotos de jardines">
-    <img class="carrusel__foto activa" src="assets/img/hero/carrusel-1.jpg" alt="Jardín con borduras de boj recortadas en forma geométrica, rosales blancos y árboles al fondo" fetchpriority="high">
-    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-2.jpg" alt="Cantero curvo con formios, plantas de follaje rojo y helechos sobre césped">
-    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-3.jpg" alt="Césped parejo con bordura de boj y senderos de piedra frente a una casa moderna">
-    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-4.jpg" alt="Sendero de piedra partida entre borduras de boj con una casa de ladrillo al fondo">
-    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-5.jpg" alt="Borduras redondeadas de boj junto a un camino de lajas y césped recién cortado">
+    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-1.jpg" data-src-movil="assets/img/hero/carrusel-1-movil.jpg" alt="Jardín con borduras de boj recortadas en forma geométrica, rosales blancos y árboles al fondo" fetchpriority="high">
+    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-2.jpg" data-src-movil="assets/img/hero/carrusel-2-movil.jpg" alt="Cantero curvo con formios, plantas de follaje rojo y helechos sobre césped">
+    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-3.jpg" data-src-movil="assets/img/hero/carrusel-3-movil.jpg" alt="Césped parejo con bordura de boj y senderos de piedra frente a una casa moderna">
+    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-4.jpg" data-src-movil="assets/img/hero/carrusel-4-movil.jpg" alt="Sendero de piedra partida entre borduras de boj con una casa de ladrillo al fondo">
+    <img class="carrusel__foto" data-src="assets/img/hero/carrusel-5.jpg" data-src-movil="assets/img/hero/carrusel-5-movil.jpg" alt="Borduras redondeadas de boj junto a un camino de lajas y césped recién cortado">
   </div>
   <div class="portada__velo"></div>
   <div class="contenedor portada__contenido">
@@ -421,6 +424,7 @@
       <p class="antetitulo">Proyectos</p>
       <h2>Jardines que <em>cuidamos</em></h2>
       <p>Algunos de los jardines en los que trabajamos. Tocá una foto para verla más grande.</p>
+      <p class="deslizar" aria-hidden="true">Deslizá para ver más</p>
     </header>
 
     <div class="galeria" id="galeria">
@@ -476,6 +480,7 @@
     <header class="seccion__titulo">
       <p class="antetitulo">Tips</p>
       <h2>Consejos para cuidar <em>tu jardín</em></h2>
+      <p class="deslizar" aria-hidden="true">Deslizá para ver más</p>
     </header>
     <div class="tips">
       <article class="tip">

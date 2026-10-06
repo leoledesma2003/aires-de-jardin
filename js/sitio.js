@@ -10,18 +10,38 @@ window.addEventListener('scroll', marcarSombra, { passive: true });
 marcarSombra();
 
 // ─── Carrusel de la portada ───
-// Arranca con las fotos que vienen en el HTML. Si en el panel se cargaron
-// fotos propias, las pide a la API y pasa a mostrar esas.
+// Cada foto aparece recién cuando terminó de bajar y está lista para dibujarse
+// (así nunca se ve "cargando"). Si la siguiente todavía no llegó, la actual
+// sigue en pantalla. En celular vertical usa las versiones verticales.
+// Arranca con las fotos del HTML; si en el panel se cargaron fotos propias,
+// las pide a la API y pasa a mostrar esas.
 const API_CARRUSEL = 'https://api.airesdejardin.com.ar/carrusel';
 const DURACION_FOTO = 6000;
+const esCelularVertical = window.matchMedia('(max-width: 700px) and (orientation: portrait)');
 const carrusel = document.getElementById('carrusel');
 const puntos = document.getElementById('carruselPuntos');
 let fotosCarrusel = [...carrusel.querySelectorAll('.carrusel__foto')];
-let fotoCarrusel = 0;
+let fotoCarrusel = -1;
 let timerCarrusel = null;
+let pedidoCarrusel = 0; // evita que un cambio viejo pise a uno nuevo
 
-function cargarFoto(img) {
-  if (img && !img.src && img.dataset.src) img.src = img.dataset.src;
+function fuenteFoto(img) {
+  return (esCelularVertical.matches && img.dataset.srcMovil) || img.dataset.src;
+}
+
+// Promesa que se cumple cuando la foto está completa y lista para dibujarse (true) o falló (false)
+function prepararFoto(img) {
+  if (!img._lista) {
+    img._lista = new Promise(listo => {
+      img.decoding = 'async';
+      const decodificar = () => (img.decode ? img.decode() : Promise.resolve()).then(() => listo(true), () => listo(img.naturalWidth > 0));
+      img.addEventListener('load', decodificar, { once: true });
+      img.addEventListener('error', () => listo(false), { once: true });
+      if (!img.getAttribute('src')) img.src = fuenteFoto(img);
+      else if (img.complete) img.naturalWidth ? decodificar() : listo(false);
+    });
+  }
+  return img._lista;
 }
 
 function dibujarPuntos() {
@@ -31,21 +51,33 @@ function dibujarPuntos() {
   puntos.style.setProperty('--duracion', DURACION_FOTO + 'ms');
 }
 
-function mostrarFotoCarrusel(i) {
+async function mostrarFotoCarrusel(i) {
+  clearTimeout(timerCarrusel);
+  if (!fotosCarrusel.length) return;
+  const pedido = ++pedidoCarrusel;
+  const destino = (i + fotosCarrusel.length) % fotosCarrusel.length;
+  const nueva = fotosCarrusel[destino];
+  const ok = await prepararFoto(nueva);
+  if (pedido !== pedidoCarrusel) return;
+  if (!ok) { // foto rota: se saltea
+    fotosCarrusel = fotosCarrusel.filter(f => f !== nueva); nueva.remove(); dibujarPuntos();
+    if (fotoCarrusel >= fotosCarrusel.length) fotoCarrusel = -1;
+    mostrarFotoCarrusel(destino);
+    return;
+  }
   const anterior = fotosCarrusel[fotoCarrusel];
-  fotoCarrusel = (i + fotosCarrusel.length) % fotosCarrusel.length;
-  const actual = fotosCarrusel[fotoCarrusel];
-  fotosCarrusel.forEach(f => f.classList.remove('saliendo'));
-  if (anterior && anterior !== actual) { anterior.classList.remove('activa'); anterior.classList.add('saliendo'); }
-  cargarFoto(actual);
-  // reiniciar la animación de zoom
-  actual.classList.remove('activa'); void actual.offsetWidth; actual.classList.add('activa');
-  cargarFoto(fotosCarrusel[(fotoCarrusel + 1) % fotosCarrusel.length]); // precargar la siguiente
+  fotoCarrusel = destino;
+  carrusel.querySelectorAll('.saliendo').forEach(f => f.classList.remove('saliendo'));
+  if (anterior && anterior !== nueva) { anterior.classList.remove('activa'); anterior.classList.add('saliendo'); }
+  nueva.classList.remove('activa'); void nueva.offsetWidth; nueva.classList.add('activa'); // reinicia el zoom
+  carrusel.classList.add('listo');
   [...puntos.children].forEach((b, k) => {
     b.classList.remove('activo'); void b.offsetWidth;
     b.classList.toggle('activo', k === fotoCarrusel);
     b.setAttribute('aria-current', k === fotoCarrusel ? 'true' : 'false');
   });
+  // ir bajando la siguiente mientras se ve esta
+  if (fotosCarrusel.length > 1) prepararFoto(fotosCarrusel[(fotoCarrusel + 1) % fotosCarrusel.length]);
   programarCarrusel();
 }
 
@@ -69,22 +101,32 @@ mostrarFotoCarrusel(0);
     const r = await fetch(API_CARRUSEL, { signal: control.signal });
     const { fotos } = await r.json();
     if (!Array.isArray(fotos) || !fotos.length) return;
-    // Agrega las fotos del panel y saca las predeterminadas cuando ya no se ven
-    const nuevas = fotos.map(f => Object.assign(document.createElement('img'), { className: 'carrusel__foto', alt: f.alt || 'Jardín realizado por Aires de Jardín' }));
-    nuevas.forEach((img, k) => { img.dataset.src = fotos[k].url; carrusel.appendChild(img); });
-    const viejas = fotosCarrusel.filter(f => !f.classList.contains('activa'));
-    viejas.forEach(f => f.remove());
-    const visible = fotosCarrusel.find(f => f.classList.contains('activa'));
+    const nuevas = fotos.map(f => {
+      const img = Object.assign(document.createElement('img'), { className: 'carrusel__foto', alt: f.alt || 'Jardín realizado por Aires de Jardín' });
+      img.dataset.src = f.url;
+      carrusel.appendChild(img);
+      return img;
+    });
+    // Se pasa a las fotos del panel recién cuando la primera está lista
+    if (!(await prepararFoto(nuevas[0]))) { nuevas.forEach(n => n.remove()); return; }
+    const viejas = fotosCarrusel;
     fotosCarrusel = nuevas;
     fotoCarrusel = -1;
     dibujarPuntos();
-    cargarFoto(nuevas[0]);
-    nuevas[0].addEventListener('load', () => {
-      mostrarFotoCarrusel(0);
-      setTimeout(() => visible?.remove(), 2000);
-    }, { once: true });
+    const visible = viejas.find(f => f.classList.contains('activa'));
+    await mostrarFotoCarrusel(0);
+    if (visible) { visible.classList.remove('activa'); visible.classList.add('saliendo'); }
+    setTimeout(() => viejas.forEach(f => f.remove()), 2000);
   } catch { /* sin conexión con la API: quedan las fotos predeterminadas */ }
 })();
+
+// ─── Botón flotante de WhatsApp: se muestra cuando la portada ya no se ve ───
+const whatsappFlotante = document.querySelector('.whatsapp-flotante');
+if ('IntersectionObserver' in window) {
+  whatsappFlotante.classList.add('oculto');
+  new IntersectionObserver(([e]) => whatsappFlotante.classList.toggle('oculto', e.isIntersecting), { threshold: 0.15 })
+    .observe(document.getElementById('inicio'));
+}
 
 // ─── Menú del celular ───
 const menuBoton = document.getElementById('menuBoton');

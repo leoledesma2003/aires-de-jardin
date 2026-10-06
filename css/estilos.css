@@ -58,7 +58,10 @@ h1 em, h2 em {
   font-size: 1.2em;
   line-height: .8;
   color: var(--verde);
-  padding-right: .06em;
+  padding: 0 .06em 0 .14em;
+  /* la letra manuscrita sobresale a la izquierda: el margen se repite en cada renglón */
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 .seccion--oscura h2 em { color: var(--verde-profundo); }
 p { margin: 0 0 1em; }
@@ -752,7 +755,71 @@ p { margin: 0 0 1em; }
   .whatsapp-flotante { right: 16px; bottom: 16px; width: 56px; height: 56px; }
 }
 
+/* Indicación "Deslizá" de las tiras horizontales: solo en celular */
+.deslizar { display: none; }
+
+/* El botón flotante de WhatsApp aparece después de la portada (ahí ya hay uno) */
+.whatsapp-flotante { transition: transform .25s, opacity .25s, visibility .25s; }
+.whatsapp-flotante.oculto { opacity: 0; visibility: hidden; transform: translateY(16px) scale(.9); }
+
+/* ═══════════ Celular (ajustes finos) ═══════════ */
+@media (max-width: 600px) {
+  .seccion { padding: 60px 0; }
+  .seccion__titulo { margin-bottom: 30px; }
+  h2 { font-size: clamp(1.85rem, 8vw, 2.3rem); }
+
+  /* Portada: el texto nunca toca las barritas del carrusel ni el encabezado */
+  .portada { min-height: calc(100svh - var(--alto-encabezado)); }
+  .portada__contenido { padding-top: 64px; padding-bottom: 36px; }
+  .portada__antetitulo { font-size: .7rem; letter-spacing: .14em; margin-bottom: .9em; }
+  .portada h1 { font-size: clamp(2.3rem, 10.5vw, 2.9rem); max-width: none; line-height: 1.08; }
+  .portada h1 em { display: inline-block; line-height: 1; margin-top: .05em; }
+  .portada__texto { font-size: 1.02rem; }
+  .portada__valores { font-size: 1.3rem; margin-bottom: 1.4em; }
+  .portada__botones { gap: 10px; }
+
+  /* Tiras que se deslizan con el dedo (galería y tips) */
+  .deslizar {
+    display: flex; align-items: center; gap: 8px;
+    margin-top: 10px !important;
+    font-size: .8rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--verde) !important;
+  }
+  .deslizar::after { content: '→'; font-size: 1rem; animation: deslizar 1.6s ease-in-out infinite; }
+  @keyframes deslizar { 50% { transform: translateX(6px); } }
+  .galeria, .tips {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    margin: 0 -16px;
+    padding: 0 16px 6px;
+    scroll-padding: 0 16px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .galeria::-webkit-scrollbar, .tips::-webkit-scrollbar { display: none; }
+  .galeria__item { flex: 0 0 80%; aspect-ratio: 4 / 5; border-radius: 12px; scroll-snap-align: start; }
+  .galeria__item:first-child { grid-column: auto; aspect-ratio: 4 / 5; }
+  .tip { flex: 0 0 84%; scroll-snap-align: start; }
+
+  /* Cómo trabajamos: número al costado, más compacto */
+  .pasos { gap: 26px; }
+  .pasos li { display: grid; grid-template-columns: 46px 1fr; column-gap: 16px; align-items: start; }
+  .pasos__numero { grid-row: span 2; width: 44px; height: 44px; font-size: 1.25rem; margin: 0; }
+  .pasos h3 { margin: 8px 0 4px; font-size: 1.3rem; }
+
+  .seleccion__fotos { height: 330px; }
+  .servicios__cabecera { margin-bottom: 30px; }
+  .srv__nombre { font-size: 1.15rem; }
+  .srv__tab { padding: 16px 4px; }
+  .marcas { padding: 36px 0; }
+  .pie { padding: 40px 0 90px; }
+  .pie__lema { font-size: 1.35rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .deslizar::after { animation: none; }
   .carrusel__foto.activa, .carrusel__foto.saliendo { animation: none; transform: none; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; }
