@@ -145,6 +145,13 @@ a { color: inherit; }
 .foto-carrusel__acciones [data-borrar] { margin-left: auto; }
 .foto-carrusel__alt { font-size: .85rem; color: var(--gris); }
 .foto-carrusel--muestra { opacity: .75; }
+.foto-carrusel__nombre { font-weight: 600; font-size: .95rem; }
+.foto-carrusel__marca { position: absolute; right: 8px; top: 8px; padding: 3px 9px; border-radius: 999px; font-size: .72rem; font-weight: 600; background: rgba(255,255,255,.9); color: var(--gris); }
+.foto-carrusel__marca--propia { background: var(--lima); color: var(--verde-profundo); }
+.foto-carrusel__acciones label.btn { cursor: pointer; }
+.carrusel-admin--logos .foto-carrusel__img { aspect-ratio: 16 / 7; background: var(--fondo); }
+.carrusel-admin--logos .foto-carrusel__img img { object-fit: contain; padding: 14px 18px; }
+a.pestana { text-decoration: none; color: inherit; display: inline-block; }
 .btn[disabled] { opacity: .4; cursor: default; }
 .aviso-carrusel { display: grid; gap: 10px; justify-items: start; margin-bottom: 16px; padding: 14px 16px; border-radius: 10px; background: var(--lima-claro); }
 .aviso-carrusel p { margin: 0; }

@@ -308,7 +308,8 @@ function render() {
     cliente: () => vistaFichaCliente(id),
     'cliente-editar': () => editorCliente(id, params),
     pedidos: vistaPedidos,
-    carrusel: vistaCarrusel,
+    fotos: () => vistaFotos(params.get('s')),
+    carrusel: () => ir('fotos?s=carrusel'),
     presupuestos: vistaPresupuestos,
     presupuesto: () => editorPresupuesto(id, params),
     facturas: vistaFacturas,
@@ -1805,29 +1806,52 @@ async function vistaPedidos() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Carrusel de la portada de la web
+// Fotos de la web (carrusel, servicios, proyectos, Selección Verde, logos)
 // ═══════════════════════════════════════════════════════════
+// "lista": varias fotos en orden (se agregan, ordenan y borran).
+// "lugares": lugares fijos con una foto cada uno (se cambian o se vuelve a la original).
 const WEB = 'https://airesdejardin.com.ar';
-const FOTOS_PREDETERMINADAS = [
-  ['carrusel-1.jpg', 'Jardín con borduras de boj recortadas en forma geométrica, rosales blancos y árboles al fondo'],
-  ['carrusel-2.jpg', 'Cantero curvo con formios, plantas de follaje rojo y helechos sobre césped'],
-  ['carrusel-3.jpg', 'Césped parejo con bordura de boj y senderos de piedra frente a una casa moderna'],
-  ['carrusel-4.jpg', 'Sendero de piedra partida entre borduras de boj con una casa de ladrillo al fondo'],
-  ['carrusel-5.jpg', 'Borduras redondeadas de boj junto a un camino de lajas y césped recién cortado'],
-];
+const SECCIONES_WEB = {
+  carrusel: { titulo: 'Portada', tipo: 'lista', max: 12, grande: 1920, ayuda: 'Las fotos que pasan en el primer banner, una cada 6 segundos. Usá fotos horizontales: en el celular se recortan a los costados, así que lo importante tiene que estar en el centro.' },
+  servicios: { titulo: 'Servicios', tipo: 'lugares', grande: 1400, ayuda: 'Una foto por servicio. Se ve al lado de la descripción cuando alguien abre ese servicio.' },
+  proyectos: { titulo: 'Proyectos', tipo: 'lista', max: 30, grande: 1600, chica: 640, ayuda: 'La galería de trabajos, en este orden. Al tocar una foto en la web se ve en grande.' },
+  seleccion: { titulo: 'Selección Verde', tipo: 'lugares', grande: 1400, ayuda: 'La foto 1 es la grande de la izquierda; la 2 y la 3 son las chicas.' },
+  marcas: { titulo: 'Trabajamos con', tipo: 'lista', max: 8, grande: 700, png: true, ayuda: 'Logos de empresas clientes. Conviene PNG con fondo transparente.' },
+};
 
-// Achica la foto en el navegador antes de subirla (máx. 1920 px, JPG) para que la web cargue rápido
-function prepararFoto(origen) {
+// Lee de la web publicada cuáles son las fotos predeterminadas de cada sección
+let predeterminadas = null;
+function fotosPredeterminadas() {
+  predeterminadas ??= fetch('index.html', { cache: 'no-cache' }).then(r => r.text()).then(html => {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const abs = src => new URL(src, location.href).href;
+    return {
+      carrusel: [...doc.querySelectorAll('.carrusel__foto')].map(i => ({ url: abs(i.dataset.src || i.getAttribute('src')), alt: i.alt })),
+      servicios: [...doc.querySelectorAll('.srv__panel')].map(p => ({ clave: p.id.replace('srv-', ''), nombre: p.querySelector('h3')?.textContent || '', url: abs(p.querySelector('.srv__foto img').getAttribute('src')), alt: p.querySelector('.srv__foto img').alt })),
+      proyectos: [...doc.querySelectorAll('.galeria__item')].map(b => ({ url: abs(b.dataset.grande), chica: abs(b.querySelector('img').getAttribute('src')), alt: b.querySelector('img').alt })),
+      seleccion: [...doc.querySelectorAll('.seleccion__fotos img')].map((i, k) => ({ clave: String(k + 1), nombre: ['Foto 1 (grande)', 'Foto 2', 'Foto 3'][k], url: abs(i.getAttribute('src')), alt: i.alt })),
+      marcas: [...doc.querySelectorAll('.marcas__logos img')].map(i => ({ url: abs(i.getAttribute('src')), alt: i.alt })),
+    };
+  }).catch(e => { predeterminadas = null; throw e; });
+  return predeterminadas;
+}
+
+// Achica la foto en el navegador antes de subirla, para que la web cargue rápido.
+// Los logos (png: true) quedan en PNG para conservar el fondo transparente.
+function prepararFoto(origen, { max = 1920, png = false } = {}) {
   return new Promise((ok, mal) => {
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const escala = Math.min(1, 1920 / Math.max(img.naturalWidth, img.naturalHeight));
+      const escala = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
       const c = document.createElement('canvas');
       c.width = Math.round(img.naturalWidth * escala); c.height = Math.round(img.naturalHeight * escala);
-      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      let calidad = 0.82, datos = c.toDataURL('image/jpeg', calidad);
-      while (datos.length > 1_300_000 && calidad > 0.5) { calidad -= 0.08; datos = c.toDataURL('image/jpeg', calidad); }
+      const ctx = c.getContext('2d');
+      if (!png) { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height); }
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      let datos;
+      if (png) datos = c.toDataURL('image/png');
+      else { let calidad = 0.82; datos = c.toDataURL('image/jpeg', calidad); while (datos.length > 1_300_000 && calidad > 0.5) { calidad -= 0.08; datos = c.toDataURL('image/jpeg', calidad); } }
       ok({ datos, vertical: c.height > c.width });
       if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
     };
@@ -1836,28 +1860,50 @@ function prepararFoto(origen) {
   });
 }
 
-async function vistaCarrusel() {
-  const titulo = cabecera('Carrusel de portada', 'Las fotos que pasan en el primer banner de airesdejardin.com.ar.',
-    `<a class="btn btn--secundario" href="${WEB}" target="_blank" rel="noopener">Ver la web ↗</a>
-     <label class="btn">+ Agregar fotos<input type="file" id="subirFotos" accept="image/jpeg,image/png,image/webp" multiple hidden></label>`);
-  vista.innerHTML = titulo + '<section class="tarjeta"><p class="vacio">Cargando fotos…</p></section>';
-  let fotos = [];
-  try { const r = await Datos.api('GET', '/carrusel'); fotos = r.fotos || []; }
-  catch { vista.innerHTML = titulo + '<section class="tarjeta"><p class="vacio">No hay conexión con el servidor.</p></section>'; return; }
-  if (rutaActual().seccion !== 'carrusel') return;
+// Sube una foto a una sección (con miniatura si la sección la usa)
+async function subirFotoWeb(seccion, origen, { alt = '', clave } = {}) {
+  const conf = SECCIONES_WEB[seccion];
+  const { datos, vertical } = await prepararFoto(origen, { max: conf.grande, png: conf.png });
+  const chica = conf.chica ? (await prepararFoto(origen, { max: conf.chica })).datos : undefined;
+  const r = await Datos.api('POST', '/fotos', { seccion, clave, imagen: datos, chica, alt });
+  if (!r.ok) throw new Error(r.error);
+  return { vertical };
+}
 
+async function vistaFotos(seccion) {
+  if (!SECCIONES_WEB[seccion]) seccion = 'carrusel';
+  const conf = SECCIONES_WEB[seccion];
+  const pestanas = `<div class="pestanas">${Object.entries(SECCIONES_WEB).map(([k, v]) => `<a class="pestana ${k === seccion ? 'activa' : ''}" href="#fotos?s=${k}">${v.titulo}</a>`).join('')}</div>`;
+  const titulo = cabecera('Fotos de la web', 'Cambiá o agregá las fotos de cada sección de airesdejardin.com.ar.',
+    `<a class="btn btn--secundario" href="${WEB}" target="_blank" rel="noopener">Ver la web ↗</a>
+     ${conf.tipo === 'lista' ? `<label class="btn">+ Agregar ${seccion === 'marcas' ? 'logos' : 'fotos'}<input type="file" id="subirFotos" accept="image/jpeg,image/png,image/webp" multiple hidden></label>` : ''}`) + pestanas;
+  vista.innerHTML = titulo + '<section class="tarjeta"><p class="vacio">Cargando fotos…</p></section>';
+  let propias = [], originales = [];
+  try {
+    const [r, pred] = await Promise.all([Datos.api('GET', '/fotos'), fotosPredeterminadas()]);
+    propias = r.secciones?.[seccion] || []; originales = pred[seccion] || [];
+  } catch { vista.innerHTML = titulo + '<section class="tarjeta"><p class="vacio">No hay conexión con el servidor.</p></section>'; return; }
+  if (rutaActual().seccion !== 'fotos') return;
+  (conf.tipo === 'lista' ? fotosLista : fotosLugares)(seccion, conf, titulo, propias, originales);
+}
+
+function fotosLista(seccion, conf, titulo, propias, originales) {
+  const usandoOriginales = !propias.length;
+  const mostrar = usandoOriginales ? originales.map(f => ({ ...f, predeterminada: true })) : propias;
+  const esLogo = seccion === 'marcas';
   vista.innerHTML = titulo + `
     <section class="tarjeta">
-      <div class="tarjeta__titulo"><h2>Fotos (${fotos.length})</h2><span class="ayuda">Pasan en este orden, una cada 6 segundos. Hasta 12 fotos.</span></div>
-      ${fotos.length ? '' : `<div class="aviso-carrusel">
-        <p>Todavía no cargaste fotos: la web muestra las <strong>5 fotos predeterminadas</strong>. Cuando agregues la primera, el carrusel pasa a mostrar solo las tuyas.</p>
-        <button class="btn btn--secundario btn--chico" id="importarPredeterminadas">Copiar las 5 predeterminadas acá para editarlas</button></div>`}
-      <div class="carrusel-admin" id="listaFotos">
-        ${(fotos.length ? fotos : FOTOS_PREDETERMINADAS.map(([f, alt]) => ({ url: `assets/img/hero/${f}`, alt, predeterminada: true }))).map((f, i, todas) => `
+      <div class="tarjeta__titulo"><h2>${conf.titulo} (${propias.length || originales.length})</h2><span class="ayuda">Hasta ${conf.max} ${esLogo ? 'logos' : 'fotos'}.</span></div>
+      <p class="ayuda" style="margin-top:0">${conf.ayuda}</p>
+      ${usandoOriginales ? `<div class="aviso-carrusel">
+        <p>Todavía no cargaste ${esLogo ? 'logos propios' : 'fotos propias'}: la web muestra ${esLogo ? 'los' : 'las'} <strong>${originales.length} ${esLogo ? 'logos originales' : 'fotos originales'}</strong>. Cuando agregues ${esLogo ? 'el primero' : 'la primera'}, la sección pasa a mostrar solo ${esLogo ? 'los tuyos' : 'las tuyas'}.</p>
+        <button class="btn btn--secundario btn--chico" id="importarPredeterminadas">Copiar ${esLogo ? 'los originales acá para editarlos' : 'las originales acá para editarlas'}</button></div>` : ''}
+      <div class="carrusel-admin ${esLogo ? 'carrusel-admin--logos' : ''}" id="listaFotos">
+        ${mostrar.map((f, i, todas) => `
         <article class="foto-carrusel${f.predeterminada ? ' foto-carrusel--muestra' : ''}" data-id="${f.id || ''}">
-          <div class="foto-carrusel__img"><img src="${esc(f.url)}" alt="" loading="lazy"><span class="foto-carrusel__num">${i + 1}</span></div>
+          <div class="foto-carrusel__img"><img src="${esc(f.chica || f.url)}" alt="" loading="lazy"><span class="foto-carrusel__num">${i + 1}</span></div>
           ${f.predeterminada ? `<p class="foto-carrusel__alt">${esc(f.alt)}</p>` : `
-          <label class="campo"><span>Descripción (para buscadores y lectores de pantalla)</span><input class="alt" value="${esc(f.alt)}" maxlength="160" placeholder="Ej.: Cantero con formios y césped recién cortado"></label>
+          <label class="campo"><span>${esLogo ? 'Nombre de la empresa' : 'Descripción (para buscadores y lectores de pantalla)'}</span><input class="alt" value="${esc(f.alt)}" maxlength="160" placeholder="${esLogo ? 'Ej.: DER Distribuciones' : 'Ej.: Cantero con formios y césped recién cortado'}"></label>
           <div class="foto-carrusel__acciones">
             <button class="btn btn--secundario btn--icono" data-mover="-1" ${i === 0 ? 'disabled' : ''} title="Mover antes">←</button>
             <button class="btn btn--secundario btn--icono" data-mover="1" ${i === todas.length - 1 ? 'disabled' : ''} title="Mover después">→</button>
@@ -1865,59 +1911,96 @@ async function vistaCarrusel() {
           </div>`}
         </article>`).join('')}
       </div>
-      ${fotos.length ? '<div class="pie-form" style="position:static;background:none;padding-bottom:0"><button class="btn" id="guardarCarrusel">Guardar orden y descripciones</button></div>' : ''}
-    </section>
-    <p class="ayuda">Consejo: usá fotos <strong>horizontales</strong> y bien iluminadas. En el celular la foto se recorta a los costados, así que conviene que lo importante esté en el centro.</p>`;
+      ${propias.length ? '<div class="pie-form" style="position:static;background:none;padding-bottom:0"><button class="btn" id="guardarOrden">Guardar orden y descripciones</button></div>' : ''}
+    </section>`;
 
-  const subir = async archivosOUrls => {
-    const lista = [...archivosOUrls];
-    if (fotos.length + lista.length > 12) { aviso(`Podés tener hasta 12 fotos (hay ${fotos.length}).`); return; }
+  const subir = async items => {
+    const lista = [...items];
+    if (propias.length + lista.length > conf.max) { aviso(`Podés tener hasta ${conf.max} (hay ${propias.length}).`); return; }
     let hechas = 0, verticales = 0;
     for (const item of lista) {
-      estadoGuardado(`Subiendo foto ${hechas + 1} de ${lista.length}…`, 'guardando');
+      estadoGuardado(`Subiendo ${hechas + 1} de ${lista.length}…`, 'guardando');
       try {
-        const { datos, vertical } = await prepararFoto(item.url || item);
+        const { vertical } = await subirFotoWeb(seccion, item.url || item, { alt: item.alt || '' });
         if (vertical) verticales++;
-        const r = await Datos.api('POST', '/carrusel', { imagen: datos, alt: item.alt || '' });
-        if (!r.ok) { aviso(r.error); break; }
         hechas++;
       } catch (e) { aviso(e.message || 'No se pudo subir una foto'); break; }
     }
     estadoGuardado('Guardado ✓', 'ok');
-    if (hechas) aviso(`${hechas} foto(s) agregada(s)${verticales ? `. ${verticales} es vertical: en la portada se va a recortar.` : ''}`);
-    vistaCarrusel();
+    if (hechas) aviso(`${hechas} agregada(s)${seccion === 'carrusel' && verticales ? `. ${verticales} es vertical: en la portada se va a recortar.` : ''}`);
+    vistaFotos(seccion);
   };
-  $('#subirFotos').addEventListener('change', e => { if (e.target.files.length) subir(e.target.files); });
-  $('#importarPredeterminadas')?.addEventListener('click', () =>
-    subir(FOTOS_PREDETERMINADAS.map(([f, alt]) => ({ url: `assets/img/hero/${f}`, alt }))));
+  $('#subirFotos')?.addEventListener('change', e => { if (e.target.files.length) subir(e.target.files); });
+  $('#importarPredeterminadas')?.addEventListener('click', () => subir(originales));
 
   const lista = $('#listaFotos');
-  lista.addEventListener('click', e => {
-    const tarjeta = e.target.closest('.foto-carrusel');
-    if (e.target.closest('[data-mover]')) {
-      const paso = +e.target.closest('[data-mover]').dataset.mover;
-      const hermano = paso < 0 ? tarjeta.previousElementSibling : tarjeta.nextElementSibling;
-      if (hermano) { paso < 0 ? hermano.before(tarjeta) : hermano.after(tarjeta); renumerar(); }
-    }
-    if (e.target.closest('[data-borrar]')) {
-      confirmar('¿Borrar esta foto?', 'Deja de aparecer en la portada de la web.', 'Borrar', async () => {
-        try { await Datos.api('DELETE', '/carrusel/' + tarjeta.dataset.id); aviso('Foto borrada'); } catch { aviso('No se pudo borrar'); }
-        vistaCarrusel();
-      }, true);
-    }
-  });
   const renumerar = () => $$('.foto-carrusel', lista).forEach((t, i, todas) => {
     $('.foto-carrusel__num', t).textContent = i + 1;
     const [antes, despues] = $$('[data-mover]', t);
     if (antes) { antes.disabled = i === 0; despues.disabled = i === todas.length - 1; }
   });
-  $('#guardarCarrusel')?.addEventListener('click', async () => {
+  lista.addEventListener('click', e => {
+    const tarjeta = e.target.closest('.foto-carrusel');
+    const mover = e.target.closest('[data-mover]');
+    if (mover) {
+      const hermano = +mover.dataset.mover < 0 ? tarjeta.previousElementSibling : tarjeta.nextElementSibling;
+      if (hermano) { +mover.dataset.mover < 0 ? hermano.before(tarjeta) : hermano.after(tarjeta); renumerar(); }
+    }
+    if (e.target.closest('[data-borrar]')) {
+      confirmar('¿Borrar esta foto?', 'Deja de aparecer en la web.', 'Borrar', async () => {
+        try { await Datos.api('DELETE', '/fotos/' + tarjeta.dataset.id); aviso('Borrada'); } catch { aviso('No se pudo borrar'); }
+        vistaFotos(seccion);
+      }, true);
+    }
+  });
+  $('#guardarOrden')?.addEventListener('click', async () => {
     const tarjetas = $$('.foto-carrusel', lista);
     const textos = {}; tarjetas.forEach(t => { textos[t.dataset.id] = $('.alt', t).value.trim(); });
     try {
-      const r = await Datos.api('PUT', '/carrusel', { orden: tarjetas.map(t => t.dataset.id), textos });
-      aviso(r.ok ? 'Carrusel guardado. La web ya muestra los cambios.' : r.error);
+      const r = await Datos.api('PUT', '/fotos', { seccion, orden: tarjetas.map(t => t.dataset.id), textos });
+      aviso(r.ok ? 'Guardado. La web ya muestra los cambios.' : r.error);
     } catch { aviso('No hay conexión con el servidor'); }
+  });
+}
+
+function fotosLugares(seccion, conf, titulo, propias, originales) {
+  vista.innerHTML = titulo + `
+    <section class="tarjeta">
+      <div class="tarjeta__titulo"><h2>${conf.titulo}</h2></div>
+      <p class="ayuda" style="margin-top:0">${conf.ayuda}</p>
+      <div class="carrusel-admin" id="listaLugares">
+        ${originales.map(o => {
+          const propia = propias.find(f => f.clave === o.clave);
+          return `<article class="foto-carrusel" data-clave="${esc(o.clave)}">
+            <div class="foto-carrusel__img"><img src="${esc(propia ? propia.url : o.url)}" alt="" loading="lazy">
+              <span class="foto-carrusel__marca ${propia ? 'foto-carrusel__marca--propia' : ''}">${propia ? 'Foto propia' : 'Original'}</span></div>
+            <strong class="foto-carrusel__nombre">${esc(o.nombre)}</strong>
+            <div class="foto-carrusel__acciones">
+              <label class="btn btn--secundario btn--chico">Cambiar foto<input type="file" accept="image/jpeg,image/png,image/webp" data-cambiar hidden></label>
+              ${propia ? `<button class="btn btn--peligro btn--chico" data-original="${esc(propia.id)}">Volver a la original</button>` : ''}
+            </div>
+          </article>`;
+        }).join('')}
+      </div>
+    </section>`;
+  const lugares = $('#listaLugares');
+  lugares.addEventListener('change', async e => {
+    if (!e.target.matches('[data-cambiar]') || !e.target.files[0]) return;
+    const clave = e.target.closest('[data-clave]').dataset.clave;
+    const original = originales.find(o => o.clave === clave);
+    estadoGuardado('Subiendo foto…', 'guardando');
+    try { await subirFotoWeb(seccion, e.target.files[0], { clave, alt: original?.alt || '' }); aviso('Foto cambiada. La web ya la muestra.'); }
+    catch (err) { aviso(err.message || 'No se pudo subir la foto'); }
+    estadoGuardado('Guardado ✓', 'ok');
+    vistaFotos(seccion);
+  });
+  lugares.addEventListener('click', e => {
+    const b = e.target.closest('[data-original]');
+    if (!b) return;
+    confirmar('¿Volver a la foto original?', 'Se borra la foto que cargaste y la web vuelve a mostrar la original.', 'Volver a la original', async () => {
+      try { await Datos.api('DELETE', '/fotos/' + b.dataset.original); aviso('Listo, volvió la foto original'); } catch { aviso('No se pudo cambiar'); }
+      vistaFotos(seccion);
+    });
   });
 }
 

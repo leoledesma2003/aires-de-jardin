@@ -14,8 +14,7 @@ marcarSombra();
 // (así nunca se ve "cargando"). Si la siguiente todavía no llegó, la actual
 // sigue en pantalla. En celular vertical usa las versiones verticales.
 // Arranca con las fotos del HTML; si en el panel se cargaron fotos propias,
-// las pide a la API y pasa a mostrar esas.
-const API_CARRUSEL = 'https://api.airesdejardin.com.ar/carrusel';
+// pasa a mostrar esas (ver "Fotos cargadas desde el panel", más abajo).
 const DURACION_FOTO = 6000;
 const esCelularVertical = window.matchMedia('(max-width: 700px) and (orientation: portrait)');
 const carrusel = document.getElementById('carrusel');
@@ -94,31 +93,24 @@ document.addEventListener('visibilitychange', programarCarrusel);
 dibujarPuntos();
 mostrarFotoCarrusel(0);
 
-(async () => {
-  try {
-    const control = new AbortController();
-    setTimeout(() => control.abort(), 6000);
-    const r = await fetch(API_CARRUSEL, { signal: control.signal });
-    const { fotos } = await r.json();
-    if (!Array.isArray(fotos) || !fotos.length) return;
-    const nuevas = fotos.map(f => {
-      const img = Object.assign(document.createElement('img'), { className: 'carrusel__foto', alt: f.alt || 'Jardín realizado por Aires de Jardín' });
-      img.dataset.src = f.url;
-      carrusel.appendChild(img);
-      return img;
-    });
-    // Se pasa a las fotos del panel recién cuando la primera está lista
-    if (!(await prepararFoto(nuevas[0]))) { nuevas.forEach(n => n.remove()); return; }
-    const viejas = fotosCarrusel;
-    fotosCarrusel = nuevas;
-    fotoCarrusel = -1;
-    dibujarPuntos();
-    const visible = viejas.find(f => f.classList.contains('activa'));
-    await mostrarFotoCarrusel(0);
-    if (visible) { visible.classList.remove('activa'); visible.classList.add('saliendo'); }
-    setTimeout(() => viejas.forEach(f => f.remove()), 2000);
-  } catch { /* sin conexión con la API: quedan las fotos predeterminadas */ }
-})();
+async function usarFotosCarrusel(fotos) {
+  const nuevas = fotos.map(f => {
+    const img = Object.assign(document.createElement('img'), { className: 'carrusel__foto', alt: f.alt || 'Jardín realizado por Aires de Jardín' });
+    img.dataset.src = f.url;
+    carrusel.appendChild(img);
+    return img;
+  });
+  // Se pasa a las fotos del panel recién cuando la primera está lista
+  if (!(await prepararFoto(nuevas[0]))) { nuevas.forEach(n => n.remove()); return; }
+  const viejas = fotosCarrusel;
+  fotosCarrusel = nuevas;
+  fotoCarrusel = -1;
+  dibujarPuntos();
+  const visible = viejas.find(f => f.classList.contains('activa'));
+  await mostrarFotoCarrusel(0);
+  if (visible) { visible.classList.remove('activa'); visible.classList.add('saliendo'); }
+  setTimeout(() => viejas.forEach(f => f.remove()), 2000);
+}
 
 // ─── Botón flotante de WhatsApp: se muestra cuando la portada ya no se ve ───
 const whatsappFlotante = document.querySelector('.whatsapp-flotante');
@@ -174,13 +166,15 @@ document.querySelectorAll('[data-servicio]').forEach(a => a.addEventListener('cl
 }));
 
 // ─── Visor de fotos de la galería ───
-const fotos = [...document.querySelectorAll('.galeria__item')];
+const galeria = document.getElementById('galeria');
+const fotosGaleria = () => [...galeria.querySelectorAll('.galeria__item')];
 const visor = document.getElementById('visor');
 const visorFoto = document.getElementById('visorFoto');
 let fotoActual = 0;
 let botonQueAbrio = null;
 
 function mostrarFoto(i) {
+  const fotos = fotosGaleria();
   fotoActual = (i + fotos.length) % fotos.length;
   const boton = fotos[fotoActual];
   visorFoto.src = boton.dataset.grande;
@@ -188,7 +182,7 @@ function mostrarFoto(i) {
 }
 
 function abrirVisor(i) {
-  botonQueAbrio = fotos[i];
+  botonQueAbrio = fotosGaleria()[i];
   mostrarFoto(i);
   visor.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -202,7 +196,10 @@ function cerrarVisor() {
   if (botonQueAbrio) botonQueAbrio.focus();
 }
 
-fotos.forEach((boton, i) => boton.addEventListener('click', () => abrirVisor(i)));
+galeria.addEventListener('click', e => {
+  const boton = e.target.closest('.galeria__item');
+  if (boton) abrirVisor(fotosGaleria().indexOf(boton));
+});
 document.getElementById('visorCerrar').addEventListener('click', cerrarVisor);
 document.getElementById('visorAnterior').addEventListener('click', () => mostrarFoto(fotoActual - 1));
 document.getElementById('visorSiguiente').addEventListener('click', () => mostrarFoto(fotoActual + 1));
@@ -297,3 +294,38 @@ formulario.addEventListener('submit', async e => {
 });
 
 document.getElementById('anio').textContent = new Date().getFullYear();
+
+// ─── Fotos cargadas desde el panel ───
+// La web trae sus fotos predeterminadas en el HTML. Si en el panel ("Fotos de la web")
+// se cargaron fotos propias para alguna sección, se piden a la API y reemplazan a las de esa sección.
+// Si la API no responde, quedan las predeterminadas.
+const API_FOTOS = 'https://api.airesdejardin.com.ar/fotos';
+const escAttr = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+const aplicarFotos = {
+  carrusel: usarFotosCarrusel,
+  proyectos(fotos) {
+    galeria.innerHTML = fotos.map(f => `<button class="galeria__item" data-grande="${escAttr(f.url)}"><img src="${escAttr(f.chica)}" alt="${escAttr(f.alt || 'Jardín realizado por Aires de Jardín')}" loading="lazy" decoding="async"></button>`).join('');
+  },
+  seleccion(fotos) {
+    const imgs = document.querySelectorAll('.seleccion__fotos img');
+    fotos.forEach(f => { const img = imgs[Number(f.clave) - 1]; if (img) { img.src = f.url; if (f.alt) img.alt = f.alt; } });
+  },
+  servicios(fotos) {
+    fotos.forEach(f => { const img = document.querySelector(`#srv-${CSS.escape(f.clave)} .srv__foto img`); if (img) { img.src = f.url; if (f.alt) img.alt = f.alt; } });
+  },
+  marcas(fotos) {
+    document.querySelector('.marcas__logos').innerHTML = fotos.map(f => `<li><img src="${escAttr(f.url)}" alt="${escAttr(f.alt || 'Empresa cliente')}" loading="lazy"></li>`).join('');
+  },
+};
+
+(async () => {
+  try {
+    const control = new AbortController();
+    setTimeout(() => control.abort(), 6000);
+    const { secciones } = await (await fetch(API_FOTOS, { signal: control.signal })).json();
+    Object.entries(secciones || {}).forEach(([seccion, fotos]) => {
+      if (Array.isArray(fotos) && fotos.length && aplicarFotos[seccion]) aplicarFotos[seccion](fotos);
+    });
+  } catch { /* sin conexión con la API: quedan las fotos predeterminadas */ }
+})();
