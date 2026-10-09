@@ -1535,10 +1535,14 @@ function abrirDocumento(tipo, id) {
   }
   $('#hoja').innerHTML = html;
   $('#modalDocTitulo').textContent = titulo;
-  const wa = linkWa(tel, mensaje);
+  // Para quién es el documento (sirve para ofrecer guardar el teléfono en la ficha)
+  const clienteDoc = tipo === 'factura' ? DB.facturas.find(x => x.id === id)?.clienteId
+    : tipo === 'presupuesto' ? DB.presupuestos.find(x => x.id === id)?.clienteId
+    : tipo === 'cobro' ? DB.cobros.find(x => x.id === id)?.clienteId : '';
   $('#modalDocAcciones').innerHTML = `
     <button class="btn" id="imprimir">Imprimir / Guardar PDF</button>
-    ${wa ? `<a class="btn btn--secundario" href="${wa}" target="_blank" rel="noopener">Enviar por WhatsApp</a>` : ''}
+    ${tipo !== 'recibo' ? '<button class="btn btn--secundario" id="enviarWa">Enviar por WhatsApp</button>' : ''}
+    <button class="btn btn--secundario" id="descargarPdf">Descargar PDF</button>
     ${email ? `<a class="btn btn--secundario" href="mailto:${esc(email)}?subject=${encodeURIComponent(titulo)}&body=${encodeURIComponent(mensaje)}">Enviar por mail</a>` : ''}
     <button class="btn btn--fantasma" id="editarDoc">Editar</button>`;
   $('#imprimir').addEventListener('click', () => {
@@ -1546,9 +1550,124 @@ function abrirDocumento(tipo, id) {
     window.print(); document.title = anterior;
   });
   $('#editarDoc').addEventListener('click', () => { cerrarDocumento(); ir(ruta); });
+  $('#enviarWa')?.addEventListener('click', () => enviarPorWhatsapp({ titulo, mensaje, tel, clienteId: clienteDoc }));
+  $('#descargarPdf').addEventListener('click', async e => {
+    const b = e.currentTarget; b.disabled = true; b.textContent = 'Preparando…';
+    try { descargarArchivo(await generarPdf(), nombreArchivo(titulo)); }
+    catch { aviso('No se pudo armar el PDF. Probá con "Imprimir / Guardar PDF".'); }
+    finally { b.disabled = false; b.textContent = 'Descargar PDF'; }
+  });
   $('#modalDoc').hidden = false;
   document.body.style.overflow = 'hidden';
 }
+// ─── PDF del documento y envío por WhatsApp ───
+// El PDF se arma en el navegador a partir de la hoja que se ve en pantalla
+// (html2canvas + jsPDF, que se cargan recién la primera vez que hacen falta).
+const nombreArchivo = titulo => titulo.replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim() + '.pdf';
+let libreriasPdf = null;
+function cargarLibreriasPdf() {
+  const script = src => new Promise((ok, mal) => {
+    const s = Object.assign(document.createElement('script'), { src, onload: ok, onerror: () => mal(new Error('No se pudo cargar ' + src)) });
+    document.head.appendChild(s);
+  });
+  libreriasPdf ??= Promise.all([
+    script('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),
+    script('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js'),
+  ]).catch(e => { libreriasPdf = null; throw e; });
+  return libreriasPdf;
+}
+
+async function generarPdf() {
+  await cargarLibreriasPdf();
+  await document.fonts?.ready;
+  const hoja = $('#hoja');
+  const lienzo = await window.html2canvas(hoja, { scale: 2, backgroundColor: '#ffffff', useCORS: true, windowWidth: 1200, logging: false });
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'mm', format: 'a4', compress: true });
+  const ancho = 210, altoPagina = 297;
+  const altoTotal = lienzo.height * ancho / lienzo.width;
+  // Si la hoja es más alta que una A4, se corta en varias páginas
+  const pxPorPagina = Math.floor(lienzo.width * altoPagina / ancho);
+  // (un resto menor al 3 % de una página es redondeo: no genera una hoja en blanco)
+  for (let y = 0, pagina = 0; y < lienzo.height && (pagina === 0 || lienzo.height - y > pxPorPagina * 0.03); y += pxPorPagina, pagina++) {
+    const trozo = document.createElement('canvas');
+    trozo.width = lienzo.width; trozo.height = Math.min(pxPorPagina, lienzo.height - y);
+    const ctx = trozo.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, trozo.width, trozo.height);
+    ctx.drawImage(lienzo, 0, y, lienzo.width, trozo.height, 0, 0, lienzo.width, trozo.height);
+    if (pagina) pdf.addPage();
+    pdf.addImage(trozo.toDataURL('image/jpeg', 0.86), 'JPEG', 0, 0, ancho, Math.min(altoPagina, altoTotal - pagina * altoPagina));
+  }
+  return pdf.output('blob');
+}
+
+function descargarArchivo(blob, nombre) {
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: nombre });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+const blobADataUrl = blob => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
+
+function enviarPorWhatsapp({ titulo, mensaje, tel, clienteId }) {
+  const c = cliente(clienteId);
+  const pdfListo = generarPdf(); // se arma mientras se completa el diálogo
+  pdfListo.catch(() => {});
+  const puedeCompartirArchivo = !!(navigator.canShare && window.File && navigator.canShare({ files: [new File(['x'], 'x.pdf', { type: 'application/pdf' })] }));
+  dialogo(`<h2>Enviar por WhatsApp</h2>
+    <p>Se abre el chat con el mensaje listo y el <strong>link al PDF</strong>; el cliente lo abre con un toque.</p>
+    <div class="campos" style="grid-template-columns:1fr">
+      <label class="campo"><span>WhatsApp del ${c ? 'cliente' : 'destinatario'}</span><input id="waTel" type="tel" inputmode="tel" value="${esc(tel || '')}" placeholder="11 1234-5678" autocomplete="off"></label>
+      ${c ? `<label class="ayuda" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="waGuardar" ${tel ? '' : 'checked'}> Guardar este número en la ficha de ${esc(c.nombre)}</label>` : ''}
+      <label class="campo"><span>Mensaje</span><textarea id="waMensaje" rows="4">${esc(mensaje)}</textarea></label>
+    </div>
+    <p class="ayuda" id="waEstado" style="margin:10px 0 0">Preparando el PDF…</p>
+    <div class="dialogo__botones" style="flex-wrap:wrap">
+      <button class="btn btn--secundario" data-cerrar>Cancelar</button>
+      ${puedeCompartirArchivo ? '<button class="btn btn--secundario" id="waArchivo">Mandar el archivo PDF</button>' : ''}
+      <button class="btn" id="waEnviar">Abrir WhatsApp</button>
+    </div>`, (d, cerrar) => {
+    const estado = $('#waEstado', d);
+    pdfListo.then(() => { estado.textContent = 'PDF listo ✓'; }, () => { estado.textContent = 'No se pudo armar el PDF: se va a mandar solo el mensaje.'; });
+    const guardarTelefono = numero => {
+      if (c && $('#waGuardar', d)?.checked && numero && numero !== c.telefono) { c.telefono = numero; Datos.guardar(); }
+    };
+
+    $('#waEnviar', d).addEventListener('click', async () => {
+      const numero = $('#waTel', d).value.trim();
+      if (numero.replace(/\D/g, '').length < 8) { aviso('Escribí un número de WhatsApp válido'); $('#waTel', d).focus(); return; }
+      // La ventana se abre ya, dentro del clic, para que el navegador no la bloquee
+      const ventana = window.open('', '_blank');
+      const boton = $('#waEnviar', d); boton.disabled = true;
+      let texto = $('#waMensaje', d).value.trim();
+      try {
+        estado.textContent = 'Subiendo el PDF…';
+        const blob = await pdfListo;
+        const r = await Datos.api('POST', '/documento', { pdf: await blobADataUrl(blob), nombre: nombreArchivo(titulo) });
+        if (!r.ok) throw new Error(r.error);
+        texto += `\n\n📄 ${titulo.split(' — ')[0]}: ${r.url}`;
+      } catch {
+        // Sin servidor: se descarga el PDF para adjuntarlo a mano
+        try { descargarArchivo(await pdfListo, nombreArchivo(titulo)); aviso('Se descargó el PDF: adjuntalo en el chat (clip 📎).'); } catch { /* sin PDF */ }
+      }
+      guardarTelefono(numero);
+      const link = linkWa(numero, texto);
+      if (ventana) ventana.location.href = link; else location.href = link;
+      cerrar();
+    });
+
+    $('#waArchivo', d)?.addEventListener('click', async () => {
+      const numero = $('#waTel', d).value.trim();
+      guardarTelefono(numero);
+      try {
+        const archivo = new File([await pdfListo], nombreArchivo(titulo), { type: 'application/pdf' });
+        await navigator.share({ files: [archivo], text: $('#waMensaje', d).value.trim(), title: titulo });
+        cerrar();
+      } catch (e) {
+        if (e?.name !== 'AbortError') aviso('No se pudo compartir el archivo. Probá con "Abrir WhatsApp".');
+      }
+    });
+  });
+}
+
 function cerrarDocumento() { $('#modalDoc').hidden = true; document.body.style.overflow = ''; }
 $('#modalDocCerrar').addEventListener('click', cerrarDocumento);
 document.addEventListener('keydown', e => {
