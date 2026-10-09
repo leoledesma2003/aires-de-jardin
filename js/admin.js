@@ -1505,7 +1505,7 @@ function abrirDocumento(tipo, id) {
     const c = cliente(f.clienteId);
     html = docFactura(f); titulo = `Factura X Nº ${numero(f.numero)} — ${f.cliente?.nombre}`; ruta = `factura/${id}`;
     tel = c?.telefono; email = c?.email;
-    mensaje = `Hola ${(f.cliente?.nombre || '').split(' ')[0]}, te enviamos el comprobante de ${nombrePeriodo(f.periodo).toLowerCase()} por ${plata(totalFactura(f))}.\nPodés transferir al CBU ${a.cbu} (${a.banco}).\n¡Gracias! Aires de Jardín`;
+    mensaje = `Hola ${(f.cliente?.nombre || '').split(' ')[0]}, te enviamos el comprobante de ${nombrePeriodo(f.periodo).toLowerCase()} por ${plata(totalFactura(f))}.\n¡Gracias! Aires de Jardín!`;
   } else if (tipo === 'presupuesto') {
     const p = DB.presupuestos.find(x => x.id === id); if (!p) return;
     const c = cliente(p.clienteId);
@@ -1608,7 +1608,14 @@ const CORREOS = {
   gmail: { nombre: 'Gmail', url: (a, asunto, cuerpo) => `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(a)}&su=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}` },
   app: { nombre: 'App de mail', url: (a, asunto, cuerpo) => `mailto:${encodeURIComponent(a)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}` },
 };
-const correoElegido = () => CORREOS[leerLocal('adj-correo')] ? leerLocal('adj-correo') : 'outlook';
+// Si el servidor tiene configurado el envío automático, esa es la opción predeterminada
+let estadoMail = null;
+const consultarMail = () => (estadoMail ??= Datos.api('GET', '/mail').then(r => (r.ok ? r : { activo: false }), () => { estadoMail = null; return { activo: false }; }));
+const correoElegido = (automatico) => {
+  const guardado = leerLocal('adj-correo');
+  if (guardado === 'directo') return automatico ? 'directo' : 'outlook';
+  return CORREOS[guardado] ? guardado : (automatico ? 'directo' : 'outlook');
+};
 
 // Sube el PDF y devuelve el link; si no hay servidor, lo descarga para adjuntarlo a mano (devuelve '')
 async function linkDelPdf(pdfListo, titulo) {
@@ -1629,13 +1636,13 @@ function enviarDocumento(canal, { titulo, mensaje, tel, email, ficha, esEmpleado
   const valorInicial = porMail ? email : tel;
   const asuntoInicial = `${titulo.split(' — ')[0]} — Aires de Jardín`;
   dialogo(`<h2>Enviar por ${porMail ? 'mail' : 'WhatsApp'}</h2>
-    <p>Se abre ${porMail ? 'el correo' : 'el chat'} con el mensaje listo y el <strong>link al PDF</strong>; se abre con un toque.</p>
+    <p id="envExplicacion">Se abre ${porMail ? 'el correo' : 'el chat'} con el mensaje listo y el <strong>link al PDF</strong>; se abre con un toque.</p>
     <div class="campos" style="grid-template-columns:1fr">
       <label class="campo"><span>${porMail ? 'Mail' : 'WhatsApp'} ${quien}</span><input id="envDestino" type="${porMail ? 'email' : 'tel'}" inputmode="${porMail ? 'email' : 'tel'}" value="${esc(valorInicial || '')}" placeholder="${porMail ? 'nombre@ejemplo.com' : '11 1234-5678'}" autocomplete="off"></label>
       ${ficha ? `<label class="ayuda" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="envGuardar" ${valorInicial ? '' : 'checked'}> Guardar en la ficha de ${esc(ficha.nombre)}</label>` : ''}
       ${porMail ? `<label class="campo"><span>Asunto</span><input id="envAsunto" value="${esc(asuntoInicial)}"></label>` : ''}
       <label class="campo"><span>Mensaje</span><textarea id="envMensaje" rows="4">${esc(mensaje)}</textarea></label>
-      ${porMail ? `<label class="campo"><span>Abrir con</span><select id="envCorreo">${Object.entries(CORREOS).map(([k, v]) => `<option value="${k}" ${k === correoElegido() ? 'selected' : ''}>${v.nombre}</option>`).join('')}</select></label>` : ''}
+      ${porMail ? `<label class="campo"><span>Cómo enviarlo</span><select id="envCorreo">${Object.entries(CORREOS).map(([k, v]) => `<option value="${k}" ${k === correoElegido(false) ? 'selected' : ''}>Abrir en ${v.nombre}</option>`).join('')}</select></label>` : ''}
     </div>
     <p class="ayuda" id="envEstado" style="margin:10px 0 0">Preparando el PDF…</p>
     <div class="dialogo__botones" style="flex-wrap:wrap">
@@ -1646,6 +1653,26 @@ function enviarDocumento(canal, { titulo, mensaje, tel, email, ficha, esEmpleado
     const estado = $('#envEstado', d);
     pdfListo.then(() => { estado.textContent = 'PDF listo ✓'; }, () => { estado.textContent = 'No se pudo armar el PDF: se va a mandar solo el mensaje.'; });
     const destino = () => $('#envDestino', d).value.trim();
+    const selector = $('#envCorreo', d);
+    const explicacionInicial = $('#envExplicacion', d).innerHTML;
+    let remitente = '';
+    const ajustarBoton = () => {
+      const directo = selector?.value === 'directo';
+      $('#envEnviar', d).textContent = directo ? 'Enviar mail' : `Abrir ${porMail ? 'el correo' : 'WhatsApp'}`;
+      $('#envExplicacion', d).innerHTML = directo
+        ? `Se envía al toque desde <strong>${esc(remitente)}</strong> con el <strong>PDF adjunto</strong>. Si el cliente responde, la respuesta llega a ${esc(DB.ajustes.email)}.`
+        : explicacionInicial;
+    };
+    if (porMail) {
+      consultarMail().then(m => {
+        if (!m.activo || !document.body.contains(selector)) return;
+        remitente = m.remitente.replace(/^.*<|>$/g, '');
+        selector.insertAdjacentHTML('afterbegin', `<option value="directo">Automático desde ${esc(remitente)} (PDF adjunto)</option>`);
+        selector.value = correoElegido(true);
+        ajustarBoton();
+      });
+      selector.addEventListener('change', ajustarBoton);
+    }
     const valido = v => porMail ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) : v.replace(/\D/g, '').length >= 8;
     const guardarEnFicha = v => {
       const campo = porMail ? 'email' : 'telefono';
@@ -1657,6 +1684,23 @@ function enviarDocumento(canal, { titulo, mensaje, tel, email, ficha, esEmpleado
       if (!valido(v)) { aviso(porMail ? 'Escribí un mail válido' : 'Escribí un número de WhatsApp válido'); $('#envDestino', d).focus(); return; }
       const correo = porMail ? $('#envCorreo', d).value : '';
       if (correo) escribirLocal('adj-correo', correo);
+      if (correo === 'directo') {
+        // Envío automático desde el servidor, con el PDF adjunto
+        const boton = $('#envEnviar', d); boton.disabled = true; boton.textContent = 'Enviando…';
+        try {
+          let pdf = null;
+          try { pdf = await blobADataUrl(await pdfListo); } catch { /* sin PDF: va solo el mensaje */ }
+          const r = await Datos.api('POST', '/mail', { para: v, asunto: $('#envAsunto', d).value.trim(), mensaje: $('#envMensaje', d).value.trim(), pdf, nombre: nombreArchivo(titulo) });
+          if (!r.ok) throw new Error(r.error);
+          guardarEnFicha(v);
+          aviso(`Mail enviado a ${v} ✓`);
+          cerrar();
+        } catch (e) {
+          estado.textContent = (e.message || 'No se pudo enviar el mail') + '. Probá de nuevo o elegí "Abrir en Outlook".';
+          boton.disabled = false; ajustarBoton();
+        }
+        return;
+      }
       // La ventana se abre ya, dentro del clic, para que el navegador no la bloquee
       const ventana = correo === 'app' ? null : window.open('', '_blank');
       $('#envEnviar', d).disabled = true;
