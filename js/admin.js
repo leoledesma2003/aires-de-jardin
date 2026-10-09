@@ -149,7 +149,7 @@ function ajustesBase() {
 }
 
 function datosVacios() {
-  return { demo: false, clientes: [], presupuestos: [], facturas: [], ordenes: [], empleados: [], recibos: [], cobros: [], ajustes: ajustesBase(), contadores: { P: 1, X: 1, OC: 1, R: 1 } };
+  return { demo: false, clientes: [], presupuestos: [], facturas: [], ordenes: [], gastos: [], empleados: [], recibos: [], cobros: [], ajustes: ajustesBase(), contadores: { P: 1, X: 1, OC: 1, R: 1 } };
 }
 
 function datosEjemplo() {
@@ -179,15 +179,13 @@ function datosEjemplo() {
         { cantidad: 8, detalle: 'Corteza de pino (bolsa)', precio: 9000, insumo: true },
       ], notas: 'Incluye retiro de residuos verdes.', estado: 'enviado' },
   ];
-  d.ordenes = [
-    { id: 'o1', numero: 1, proveedor: 'Vivero (ejemplo)', contacto: '', fecha: '2026-09-22', clienteId: 'c2', entrega: 'Retiramos en el vivero',
-      items: [
-        { cantidad: 1, detalle: 'Olivo en maceta, 2,5 m', precio: 250000 },
-        { cantidad: 12, detalle: 'Agapanto en maceta n.º 17', precio: 6000 },
-      ], notas: '', estado: 'pendiente' },
+  d.gastos = [
+    { id: 'g1', fecha: '2026-09-03', categoria: 'Combustible y movilidad', descripcion: 'Nafta camioneta', proveedor: 'YPF', monto: 45000, medio: 'Tarjeta', clienteId: '' },
+    { id: 'g2', fecha: '2026-09-10', categoria: 'Insumos y productos', descripcion: 'Fertilizante y herbicida selectivo', proveedor: 'Agro (ejemplo)', monto: 62000, medio: 'Transferencia', clienteId: 'c1' },
+    { id: 'g3', fecha: '2026-09-22', categoria: 'Plantas y vivero', descripcion: 'Olivo 2,5 m y 12 agapantos', proveedor: 'Vivero (ejemplo)', monto: 322000, medio: 'Transferencia', clienteId: 'c2' },
   ];
   d.empleados = [
-    { id: 'e1', nombre: 'Alejandro Gómez', dni: '', categoria: 'AUX. LIMPIEZA', tarea: 'JARDINERIA', ingreso: '2025-05-10' },
+    { id: 'e1', nombre: 'Alejandro Gómez', dni: '', categoria: 'AUX. LIMPIEZA', tarea: 'JARDINERIA', ingreso: '2025-05-10', telefono: '', email: '' },
   ];
   d.recibos = [
     { id: 'r1', empleadoId: 'e1', periodo: '2026-08', quincena: 2, ultimoDeposito: 'jul-26', conceptos: conceptosBase({ dias: [13, 650000] }) },
@@ -196,7 +194,7 @@ function datosEjemplo() {
     { id: 'k1', numero: 1, clienteId: 'c2', cliente: { nombre: 'Martín Pereyra (ejemplo)', barrio: 'Nordelta · Los Castores', lote: '112' }, fecha: '2026-09-05',
       medio: 'Transferencia', referencia: '', aplicaciones: [{ facturaId: 'f2', monto: 350000 }], notas: '' },
   ];
-  d.contadores = { P: 2, X: 3, OC: 2, R: 2 };
+  d.contadores = { P: 2, X: 3, OC: 1, R: 2 };
   return d;
 }
 
@@ -293,7 +291,7 @@ function rutaActual() {
   const [seccion = 'inicio', id] = camino.split('/');
   return { seccion: seccion || 'inicio', id, params: new URLSearchParams(consulta) };
 }
-const SECCION_MENU = { cliente: 'clientes', 'cliente-editar': 'clientes', presupuesto: 'presupuestos', factura: 'facturas', cobro: 'cobros', orden: 'ordenes', empleado: 'personal', recibo: 'personal' };
+const SECCION_MENU = { cliente: 'clientes', 'cliente-editar': 'clientes', presupuesto: 'presupuestos', factura: 'facturas', cobro: 'cobros', gasto: 'gastos', empleado: 'personal', recibo: 'personal' };
 
 function render() {
   const { seccion, id, params } = rutaActual();
@@ -317,8 +315,8 @@ function render() {
     factura: () => editorFactura(id, params),
     cobros: vistaCobros,
     cobro: () => editorCobro(id, params),
-    ordenes: vistaOrdenes,
-    orden: () => editorOrden(id, params),
+    gastos: vistaGastos,
+    gasto: () => editorGasto(id, params),
     personal: vistaPersonal,
     empleado: () => editorEmpleado(id),
     recibo: () => editorRecibo(id, params),
@@ -356,7 +354,7 @@ function opcionesPeriodo(sel) {
   return html;
 }
 
-// Editor de renglones reutilizable (presupuesto, factura, orden de compra)
+// Editor de renglones reutilizable (presupuesto y factura)
 function montarRenglones(cont, items, columnas, subtotal, alCambiar) {
   const celda = (c, it) => {
     const v = it[c.campo];
@@ -425,10 +423,9 @@ function todosLosDocumentos() {
     ...DB.presupuestos.map(p => ({ tipo: 'P', titulo: 'Presupuesto', id: p.id, numero: p.numero, fecha: p.fecha, quien: p.cliente?.nombre, clienteId: p.clienteId, total: totalConCantidad(p), estado: chipEstado('presupuesto', p.estado), ruta: `presupuesto/${p.id}` })),
     ...DB.facturas.map(f => ({ tipo: 'X', titulo: 'Factura X', id: f.id, numero: f.numero, fecha: f.fecha, quien: f.cliente?.nombre, clienteId: f.clienteId, total: totalFactura(f), estado: chipEstado('factura', estadoFactura(f)), ruta: `factura/${f.id}` })),
     ...DB.cobros.map(k => ({ tipo: 'R', titulo: 'Recibo de cobro', id: k.id, numero: k.numero, fecha: k.fecha, quien: k.cliente?.nombre, clienteId: k.clienteId, total: totalCobro(k), estado: `<span class="estado estado--verde">${esc(k.medio)}</span>`, ruta: `cobro/${k.id}` })),
-    ...DB.ordenes.map(o => ({ tipo: 'OC', titulo: 'Orden de compra', id: o.id, numero: o.numero, fecha: o.fecha, quien: o.proveedor, clienteId: o.clienteId, total: totalConCantidad(o), estado: chipEstado('orden', o.estado), ruta: `orden/${o.id}` })),
   ].sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || b.numero - a.numero);
 }
-const TIPO_DOC = { P: 'presupuesto', X: 'factura', OC: 'orden', R: 'cobro' };
+const TIPO_DOC = { P: 'presupuesto', X: 'factura', R: 'cobro' };
 
 function filaDocumento(d, conQuien = true) {
   return `<tr class="clic" data-ir="${d.ruta}">
@@ -453,7 +450,7 @@ function vistaInicio() {
   const delMes = DB.facturas.filter(f => f.periodo === per);
   const pendientes = DB.facturas.filter(f => saldoFactura(f) > 0);
   const abiertos = DB.presupuestos.filter(p => p.estado === 'borrador' || p.estado === 'enviado');
-  const ocPend = DB.ordenes.filter(o => o.estado === 'pendiente');
+  const gastosMes = totalGastos(per);
   const docs = todosLosDocumentos().slice(0, 8);
 
   vista.innerHTML = cabecera('Hola 👋', `Resumen de ${nombrePeriodo(per).toLowerCase()}`, `<a class="btn" href="#factura/nuevo">+ Nueva factura</a>`) + `
@@ -461,7 +458,7 @@ function vistaInicio() {
       <div class="indicador indicador--destacado"><div class="indicador__etiqueta">Facturado este mes</div><div class="indicador__valor">${plata(delMes.reduce((s, f) => s + totalFactura(f), 0))}</div><div class="indicador__detalle">${delMes.length} factura(s)</div></div>
       <div class="indicador"><div class="indicador__etiqueta">Pendiente de cobro</div><div class="indicador__valor">${plata(pendientes.reduce((s, f) => s + saldoFactura(f), 0))}</div><div class="indicador__detalle">${pendientes.length} factura(s) sin cobrar</div></div>
       <div class="indicador"><div class="indicador__etiqueta">Presupuestos abiertos</div><div class="indicador__valor">${abiertos.length}</div><div class="indicador__detalle">por ${plata(abiertos.reduce((s, p) => s + totalConCantidad(p), 0))}</div></div>
-      <div class="indicador"><div class="indicador__etiqueta">Órdenes de compra</div><div class="indicador__valor">${ocPend.length}</div><div class="indicador__detalle">pendientes de recibir</div></div>
+      <div class="indicador"><div class="indicador__etiqueta">Gastos del mes</div><div class="indicador__valor">${plata(gastosMes)}</div><div class="indicador__detalle">sin contar sueldos</div></div>
     </div>
     <div class="rejilla-2">
       <section class="tarjeta">
@@ -476,7 +473,7 @@ function vistaInicio() {
           <a class="acceso" href="#factura/nuevo"><strong>Factura X</strong><span>Comprobante del mes</span></a>
           <a class="acceso" href="#facturas" data-generar><strong>Facturas del mes</strong><span>Todas las de abono juntas</span></a>
           <a class="acceso" href="#cobro/nuevo"><strong>Recibo de cobro</strong><span>Registrar un pago</span></a>
-          <a class="acceso" href="#orden/nuevo"><strong>Orden de compra</strong><span>Pedido a proveedor</span></a>
+          <a class="acceso" href="#gasto/nuevo"><strong>Gasto</strong><span>Anotar una compra o pago</span></a>
           <a class="acceso" href="#recibo/nuevo"><strong>Recibo de quincena</strong><span>Pago al personal</span></a>
           <a class="acceso" href="#cliente-editar/nuevo"><strong>Cliente</strong><span>Cargar una ficha</span></a>
         </div>
@@ -523,11 +520,11 @@ function vistaFichaCliente(id) {
   const facturado = facturas.reduce((s, f) => s + totalFactura(f), 0);
   const cobros = DB.cobros.filter(k => k.clienteId === id);
   const pendiente = pendienteCliente(id);
+  const gastosCliente = DB.gastos.filter(g => g.clienteId === id).reduce((t, g) => t + n0(g.monto), 0);
   const wa = linkWa(c.telefono, `Hola ${c.nombre.split(' ')[0]}, te escribimos de Aires de Jardín.`);
 
   vista.innerHTML = cabecera(esc(c.nombre), [c.barrio, c.lote && 'lote ' + c.lote].filter(Boolean).map(esc).join(' · ') || (c.tipo === 'empresa' ? 'Empresa' : ''),
     `<a class="btn btn--secundario" href="#presupuesto/nuevo?cliente=${id}">+ Presupuesto</a>
-     <a class="btn btn--secundario" href="#orden/nuevo?cliente=${id}">+ Orden de compra</a>
      <a class="btn btn--secundario" href="#factura/nuevo?cliente=${id}">+ Factura X</a>
      <a class="btn" href="#cobro/nuevo?cliente=${id}">+ Recibo de cobro</a>`, ['#clientes', 'Clientes']) + `
     <div class="ficha">
@@ -547,7 +544,7 @@ function vistaFichaCliente(id) {
         <div class="ficha__saldo">
           <div class="indicador"><div class="indicador__etiqueta">Facturado</div><div class="indicador__valor">${plata(facturado)}</div><div class="indicador__detalle">${facturas.length} factura(s)</div></div>
           <div class="indicador"><div class="indicador__etiqueta">Cobrado</div><div class="indicador__valor">${plata(facturado - pendiente)}</div><div class="indicador__detalle">${cobros.length} recibo(s)</div></div>
-          <div class="indicador ${pendiente ? 'indicador--destacado' : ''}"><div class="indicador__etiqueta">Pendiente</div><div class="indicador__valor">${plata(pendiente)}</div></div>
+          <div class="indicador ${pendiente ? 'indicador--destacado' : ''}"><div class="indicador__etiqueta">Pendiente</div><div class="indicador__valor">${plata(pendiente)}</div>${gastosCliente ? `<div class="indicador__detalle">Gastos para este cliente: ${plata(gastosCliente)}</div>` : ''}</div>
         </div>
         <section class="tarjeta">
           <div class="tarjeta__titulo"><h2>Documentos</h2></div>
@@ -556,7 +553,6 @@ function vistaFichaCliente(id) {
             <button class="pestana" data-f="P">Presupuestos (${docs.filter(d => d.tipo === 'P').length})</button>
             <button class="pestana" data-f="X">Facturas (${docs.filter(d => d.tipo === 'X').length})</button>
             <button class="pestana" data-f="R">Recibos (${docs.filter(d => d.tipo === 'R').length})</button>
-            <button class="pestana" data-f="OC">Órdenes de compra (${docs.filter(d => d.tipo === 'OC').length})</button>
           </div>
           <div class="tabla-envoltura"><table class="tabla"><thead><tr><th></th><th>Número</th><th>Fecha</th><th class="num">Total</th><th>Estado</th><th></th></tr></thead>
           <tbody id="docsCliente"></tbody></table></div>
@@ -1041,93 +1037,101 @@ function editorCobro(id, params) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Órdenes de compra
+// Gastos
 // ═══════════════════════════════════════════════════════════
-function vistaOrdenes() {
-  vista.innerHTML = cabecera('Órdenes de compra', 'Pedidos a proveedores: vivero, insumos, materiales.', `<a class="btn" href="#orden/nuevo">+ Nueva orden</a>`) + `
-    <section class="tarjeta">
-      <div class="filtros"><input type="search" id="buscar" placeholder="Buscar proveedor…">
-        <select id="estado"><option value="">Todos los estados</option><option value="pendiente">Pendientes</option><option value="recibida">Recibidas</option></select></div>
-      <div class="tabla-envoltura"><table class="tabla"><thead><tr><th>Número</th><th>Fecha</th><th>Proveedor</th><th>Para</th><th class="num">Total</th><th>Estado</th><th></th></tr></thead><tbody id="filas"></tbody></table></div>
-    </section>`;
+const CATEGORIAS_GASTO = ['Combustible y movilidad', 'Insumos y productos', 'Plantas y vivero', 'Herramientas y equipos',
+  'Mantenimiento de vehículos', 'Servicios (teléfono, internet)', 'Impuestos y tasas', 'Otros'];
+const MEDIOS_GASTO = ['Efectivo', 'Transferencia', 'Tarjeta', 'Mercado Pago', 'Otro'];
+const totalGastos = per => DB.gastos.filter(g => !per || (g.fecha || '').startsWith(per)).reduce((t, g) => t + n0(g.monto), 0);
+const totalSueldos = per => DB.recibos.filter(r => r.periodo === per).reduce((t, r) => t + totalRecibo(r), 0);
+// Lo que entró en el mes: recibos de cobro + facturas marcadas cobradas a mano (sin recibo)
+function cobradoEnMes(per) {
+  const porRecibos = DB.cobros.filter(k => (k.fecha || '').startsWith(per)).reduce((t, k) => t + totalCobro(k), 0);
+  const aMano = DB.facturas.filter(f => f.estado === 'cobrada' && !cobradoFactura(f) && (f.fechaCobro || '').startsWith(per)).reduce((t, f) => t + totalFactura(f), 0);
+  return porRecibos + aMano;
+}
+
+function vistaGastos() {
+  const meses = [...new Set([periodoActual(), ...DB.gastos.map(g => (g.fecha || '').slice(0, 7)), ...DB.recibos.map(r => r.periodo)].filter(Boolean))].sort().reverse();
+  vista.innerHTML = cabecera('Gastos', 'Compras y pagos del negocio: combustible, insumos, plantas, herramientas.', `<a class="btn" href="#gasto/nuevo">+ Nuevo gasto</a>`) + `
+    <div class="filtros"><select id="mes">${meses.map(m => `<option value="${m}">${nombrePeriodo(m)}</option>`).join('')}<option value="">Todos los meses</option></select></div>
+    <div class="rejilla-2">
+      <section class="tarjeta">
+        <div class="filtros"><input type="search" id="buscar" placeholder="Buscar detalle o proveedor…">
+          <select id="categoria"><option value="">Todas las categorías</option>${CATEGORIAS_GASTO.map(c => `<option>${c}</option>`).join('')}</select></div>
+        <div class="tabla-envoltura"><table class="tabla"><thead><tr><th>Fecha</th><th>Detalle</th><th>Categoría</th><th class="num">Monto</th></tr></thead><tbody id="filas"></tbody></table></div>
+        <div class="totales"><span class="ayuda" id="cuenta"></span><div class="totales__monto"><small>TOTAL</small><span id="suma"></span></div></div>
+      </section>
+      <section class="tarjeta" id="resumen"></section>
+    </div>`;
   const dibujar = () => {
-    const q = $('#buscar').value.trim().toLowerCase(), est = $('#estado').value;
-    const lista = DB.ordenes.filter(o => (!est || o.estado === est) && (!q || (o.proveedor || '').toLowerCase().includes(q))).sort((a, b) => b.numero - a.numero);
-    $('#filas').innerHTML = lista.map(o => `<tr class="clic" data-ir="orden/${o.id}">
-      <td><strong>Nº ${numero(o.numero)}</strong></td><td>${fechaAR(o.fecha)}</td><td>${esc(o.proveedor)}</td>
-      <td>${esc(cliente(o.clienteId)?.nombre) || '<span class="sub">Stock propio</span>'}</td>
-      <td class="num">${plata(totalConCantidad(o))}</td><td>${chipEstado('orden', o.estado)}</td>
-      <td class="acciones"><button class="btn btn--secundario btn--chico" data-ver="OC:${o.id}">Ver</button></td></tr>`).join('')
-      || '<tr><td colspan="7" class="vacio">No hay órdenes de compra.</td></tr>';
-    enlazarVer(vista);
+    const mes = $('#mes').value, cat = $('#categoria').value, q = $('#buscar').value.trim().toLowerCase();
+    const delMes = DB.gastos.filter(g => !mes || (g.fecha || '').startsWith(mes));
+    const lista = delMes.filter(g => (!cat || g.categoria === cat) && (!q || `${g.descripcion} ${g.proveedor}`.toLowerCase().includes(q)))
+      .sort((a, b) => (b.fecha || '').localeCompare(a.fecha || ''));
+    $('#filas').innerHTML = lista.map(g => `<tr class="clic" data-ir="gasto/${g.id}">
+      <td>${fechaAR(g.fecha)}</td>
+      <td>${esc(g.descripcion) || '—'}<span class="sub">${[g.proveedor, g.medio, cliente(g.clienteId)?.nombre && 'para ' + cliente(g.clienteId).nombre].filter(Boolean).map(esc).join(' · ')}</span></td>
+      <td><span class="estado estado--gris">${esc(g.categoria)}</span></td>
+      <td class="num">${plata(g.monto)}</td></tr>`).join('') || '<tr><td colspan="4" class="vacio">No hay gastos cargados.</td></tr>';
+    $('#cuenta').textContent = `${lista.length} gasto(s)`;
+    $('#suma').textContent = plata(lista.reduce((t, g) => t + n0(g.monto), 0));
+
+    // Resumen: por categoría y resultado del mes
+    const porCat = CATEGORIAS_GASTO.map(c => [c, delMes.filter(g => g.categoria === c).reduce((t, g) => t + n0(g.monto), 0)]).filter(([, v]) => v).sort((a, b) => b[1] - a[1]);
+    const total = porCat.reduce((t, [, v]) => t + v, 0), max = porCat[0]?.[1] || 1;
+    const sueldos = mes ? totalSueldos(mes) : 0, cobrado = mes ? cobradoEnMes(mes) : 0, resultado = cobrado - total - sueldos;
+    $('#resumen').innerHTML = `
+      <div class="tarjeta__titulo"><h2>${mes ? nombrePeriodo(mes) : 'Todos los meses'}</h2></div>
+      ${porCat.length ? `<div class="barras">${porCat.map(([c, v]) => `<div class="barra-gasto"><div class="barra-gasto__fila"><span>${c}</span><strong>${plata(v)}</strong></div>
+        <div class="barra-gasto__pista"><div style="width:${Math.max(3, v / max * 100)}%"></div></div></div>`).join('')}</div>` : '<p class="vacio">Sin gastos en este período.</p>'}
+      ${mes ? `<div class="resultado">
+        <div><span>Cobrado en el mes</span><strong>${plata(cobrado)}</strong></div>
+        <div><span>Gastos</span><strong>− ${plata(total)}</strong></div>
+        <div><span>Sueldos (recibos de quincena)</span><strong>− ${plata(sueldos)}</strong></div>
+        <div class="resultado__total ${resultado < 0 ? 'negativo' : ''}"><span>Resultado del mes</span><strong>${resultado < 0 ? '− ' : ''}${plata(Math.abs(resultado))}</strong></div>
+      </div>` : ''}`;
   };
-  $('#buscar').addEventListener('input', dibujar); $('#estado').addEventListener('change', dibujar);
+  ['mes', 'categoria', 'buscar'].forEach(k => $('#' + k).addEventListener('input', dibujar));
   dibujar();
 }
 
-function editorOrden(id, params) {
+function editorGasto(id, params) {
   const nuevo = id === 'nuevo';
-  let o;
-  if (nuevo) {
-    o = { proveedor: '', contacto: '', fecha: hoyISO(), clienteId: params.get('cliente') || '', entrega: '', items: [{ cantidad: 1, detalle: '', precio: 0 }], notas: '', estado: 'pendiente' };
-  } else {
-    const orig = DB.ordenes.find(x => x.id === id);
-    if (!orig) { ir('ordenes'); return; }
-    o = structuredClone(orig);
-  }
-  const proveedores = [...new Set(DB.ordenes.map(x => x.proveedor).filter(Boolean))];
-  vista.innerHTML = cabecera(nuevo ? 'Nueva orden de compra' : `Orden de compra Nº ${numero(o.numero)}`, '',
-    !nuevo ? `<button class="btn btn--secundario" id="verDoc">Ver documento</button>` : '', ['#ordenes', 'Órdenes de compra']) + `
-    <form id="form">
-      <section class="tarjeta">
-        <div class="tarjeta__titulo"><h2>Datos</h2></div>
-        <div class="campos">
-          <label class="campo campo--2"><span>Proveedor</span><input name="proveedor" value="${esc(o.proveedor)}" list="listaProveedores" required placeholder="Ej.: Vivero Botánico"></label>
-          <label class="campo campo--2"><span>Contacto del proveedor</span><input name="contacto" value="${esc(o.contacto)}" placeholder="Teléfono o email"></label>
-          <label class="campo"><span>Fecha</span><input type="date" name="fecha" value="${o.fecha}" required></label>
-          <label class="campo"><span>Estado</span><select name="estado">${Object.entries(ESTADOS.orden).map(([k, v]) => `<option value="${k}" ${o.estado === k ? 'selected' : ''}>${v[0]}</option>`).join('')}</select></label>
-          <label class="campo campo--2"><span>Es para el cliente (opcional)</span><select name="clienteId"><option value="">— Stock propio —</option>${opcionesClientes(o.clienteId).replace(/^<option value="">[^<]*<\/option>/, '')}</select></label>
-          <label class="campo campo--4"><span>Entrega</span><input name="entrega" value="${esc(o.entrega)}" placeholder="Ej.: Entregar en Nordelta, Los Castores lote 112 / Retiramos en el vivero"></label>
-        </div>
-        <datalist id="listaProveedores">${proveedores.map(p => `<option value="${esc(p)}">`).join('')}</datalist>
-      </section>
-      <section class="tarjeta">
-        <div class="tarjeta__titulo"><h2>Detalle</h2></div>
-        <div id="renglones"></div>
-        <div class="totales"><span></span><div class="totales__monto"><small>TOTAL</small><span id="total"></span></div></div>
-      </section>
-      <section class="tarjeta"><label class="campo"><span>Observaciones</span><textarea name="notas">${esc(o.notas)}</textarea></label></section>
-      <div class="pie-form">
-        ${!nuevo ? '<button type="button" class="btn btn--peligro" id="borrar">Borrar</button>' : ''}
-        <a class="btn btn--secundario" href="#ordenes">Cancelar</a>
-        <button type="button" class="btn btn--secundario" id="guardarVer">Guardar y ver</button>
-        <button class="btn">Guardar</button>
-      </div>
-    </form>`;
+  const g = nuevo ? { fecha: hoyISO(), categoria: CATEGORIAS_GASTO[0], descripcion: '', proveedor: '', monto: 0, medio: 'Efectivo', clienteId: params?.get('cliente') || '' } : DB.gastos.find(x => x.id === id);
+  if (!g) { ir('gastos'); return; }
+  const proveedores = [...new Set(DB.gastos.map(x => x.proveedor).filter(Boolean))];
+  vista.innerHTML = cabecera(nuevo ? 'Nuevo gasto' : 'Editar gasto', '', '', ['#gastos', 'Gastos']) + `
+    <form class="tarjeta" id="form"><div class="campos">
+      <label class="campo"><span>Fecha</span><input type="date" name="fecha" value="${g.fecha}" required></label>
+      <label class="campo"><span>Monto ($)</span><input type="number" name="monto" min="0" step="any" inputmode="decimal" value="${g.monto || ''}" required></label>
+      <label class="campo campo--2"><span>Categoría</span><select name="categoria">${CATEGORIAS_GASTO.map(c => `<option ${c === g.categoria ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
+      <label class="campo campo--4"><span>Detalle</span><input name="descripcion" value="${esc(g.descripcion)}" placeholder="Ej.: Nafta camioneta, bolsas de tierra, tanza para bordeadora" required></label>
+      <label class="campo campo--2"><span>Proveedor (opcional)</span><input name="proveedor" value="${esc(g.proveedor)}" list="listaProveedores"></label>
+      <label class="campo"><span>Medio de pago</span><select name="medio">${MEDIOS_GASTO.map(m => `<option ${m === g.medio ? 'selected' : ''}>${m}</option>`).join('')}</select></label>
+      <label class="campo"><span>Para el cliente (opcional)</span><select name="clienteId"><option value="">— General —</option>${opcionesClientes(g.clienteId).replace(/^<option value="">[^<]*<\/option>/, '')}</select></label>
+    </div>
+    <datalist id="listaProveedores">${proveedores.map(x => `<option value="${esc(x)}">`).join('')}</datalist>
+    <div class="pie-form">
+      ${!nuevo ? '<button type="button" class="btn btn--peligro" id="borrar">Borrar</button>' : ''}
+      <a class="btn btn--secundario" href="#gastos">Cancelar</a>
+      ${nuevo ? '<button type="button" class="btn btn--secundario" id="guardarOtro">Guardar y cargar otro</button>' : ''}
+      <button class="btn">Guardar</button>
+    </div></form>`;
   const form = $('#form');
-  const totalEl = $('#total');
-  const recalcular = () => { totalEl.textContent = plata(totalConCantidad(o)); };
-  montarRenglones($('#renglones'), o.items, [
-    { campo: 'cantidad', titulo: 'Cant.', tipo: 'numero', ancho: '80px' },
-    { campo: 'detalle', titulo: 'Detalle', ejemplo: 'Ej.: Tierra negra, bolsa 50 dm³' },
-    { campo: 'precio', titulo: 'Precio unit. ($)', tipo: 'numero', ancho: '140px' },
-  ], it => n0(it.cantidad) * n0(it.precio), recalcular);
-  recalcular();
-  const guardar = ver => {
+  const guardar = otro => {
     if (!form.reportValidity()) return;
-    Object.assign(o, { proveedor: form.proveedor.value.trim(), contacto: form.contacto.value.trim(), fecha: form.fecha.value, estado: form.estado.value,
-      clienteId: form.clienteId.value, entrega: form.entrega.value.trim(), notas: form.notas.value.trim(), items: o.items.filter(i => i.detalle.trim() || n0(i.precio)) });
-    if (nuevo) { o.id = uid(); o.numero = siguienteNumero('OC'); DB.ordenes.push(o); }
-    else DB.ordenes[DB.ordenes.findIndex(x => x.id === id)] = o;
-    Datos.guardar(); aviso(`Orden de compra Nº ${numero(o.numero)} guardada`);
-    if (nuevo) ir(`orden/${o.id}`);
-    if (ver) abrirDocumento('orden', o.id);
+    const d = Object.fromEntries(new FormData(form));
+    Object.keys(d).forEach(k => { d[k] = d[k].trim(); });
+    d.monto = n0(d.monto);
+    if (nuevo) { d.id = uid(); DB.gastos.push(d); } else Object.assign(g, d);
+    Datos.guardar(); aviso('Gasto guardado');
+    if (otro) { render(); $('[name="monto"]')?.focus(); } else ir('gastos');
   };
   form.addEventListener('submit', e => { e.preventDefault(); guardar(false); });
-  $('#guardarVer').addEventListener('click', () => guardar(true));
-  $('#verDoc')?.addEventListener('click', () => abrirDocumento('orden', id));
-  $('#borrar')?.addEventListener('click', () => confirmar('¿Borrar esta orden de compra?', 'Esta acción no se puede deshacer.', 'Borrar', () => {
-    DB.ordenes = DB.ordenes.filter(x => x.id !== id); Datos.guardar(); aviso('Orden borrada'); ir('ordenes');
+  $('#guardarOtro')?.addEventListener('click', () => guardar(true));
+  $('#borrar')?.addEventListener('click', () => confirmar('¿Borrar este gasto?', 'Esta acción no se puede deshacer.', 'Borrar', () => {
+    DB.gastos = DB.gastos.filter(x => x.id !== id); Datos.guardar(); aviso('Gasto borrado'); ir('gastos');
   }, true));
 }
 
@@ -1164,7 +1168,7 @@ function vistaPersonal() {
 
 function editorEmpleado(id) {
   const nuevo = id === 'nuevo';
-  const e = nuevo ? { nombre: '', dni: '', categoria: '', tarea: 'JARDINERIA', ingreso: '' } : empleado(id);
+  const e = nuevo ? { nombre: '', dni: '', categoria: '', tarea: 'JARDINERIA', ingreso: '', telefono: '', email: '' } : empleado(id);
   if (!e) { ir('personal'); return; }
   vista.innerHTML = cabecera(nuevo ? 'Nuevo empleado' : esc(e.nombre), '', '', ['#personal', 'Personal y recibos']) + `
     <form class="tarjeta" id="form"><div class="campos">
@@ -1173,6 +1177,8 @@ function editorEmpleado(id) {
       <label class="campo"><span>Fecha de ingreso</span><input type="date" name="ingreso" value="${e.ingreso}"></label>
       <label class="campo campo--2"><span>Categoría</span><input name="categoria" value="${esc(e.categoria)}" placeholder="Ej.: AUX. LIMPIEZA"></label>
       <label class="campo campo--2"><span>Tarea desempeñada</span><input name="tarea" value="${esc(e.tarea)}" placeholder="Ej.: JARDINERIA"></label>
+      <label class="campo campo--2"><span>Teléfono / WhatsApp</span><input name="telefono" type="tel" value="${esc(e.telefono)}" placeholder="11 1234-5678"></label>
+      <label class="campo campo--2"><span>Email</span><input name="email" type="email" value="${esc(e.email)}"></label>
     </div>
     <div class="pie-form">
       ${!nuevo ? '<button type="button" class="btn btn--peligro" id="borrar">Borrar empleado</button>' : ''}
@@ -1277,7 +1283,6 @@ function vistaAjustes() {
       <div class="campos">
         <label class="campo"><span>Presupuesto</span><input type="number" min="1" name="nP" value="${DB.contadores.P}"></label>
         <label class="campo"><span>Factura X</span><input type="number" min="1" name="nX" value="${DB.contadores.X}"></label>
-        <label class="campo"><span>Orden de compra</span><input type="number" min="1" name="nOC" value="${DB.contadores.OC}"></label>
         <label class="campo"><span>Recibo de cobro</span><input type="number" min="1" name="nR" value="${DB.contadores.R}"></label>
       </div>
       <div class="pie-form" style="position:static"><button class="btn">Guardar ajustes</button></div>
@@ -1306,7 +1311,7 @@ function vistaAjustes() {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(form));
     Object.keys(ajustesBase()).forEach(k => { if (k in d) a[k] = k === 'validezPresupuesto' ? n0(d[k]) || 15 : d[k].trim(); });
-    DB.contadores = { P: Math.max(1, n0(d.nP)), X: Math.max(1, n0(d.nX)), OC: Math.max(1, n0(d.nOC)), R: Math.max(1, n0(d.nR)) };
+    DB.contadores = { P: Math.max(1, n0(d.nP)), X: Math.max(1, n0(d.nX)), OC: DB.contadores.OC, R: Math.max(1, n0(d.nR)) };
     Datos.guardar(); aviso('Ajustes guardados');
   });
   $('#formClave').addEventListener('submit', async e => {
@@ -1419,17 +1424,6 @@ function docPresupuesto(p) {
   });
 }
 
-function docOrden(o) {
-  const c = cliente(o.clienteId);
-  return docConCantidades({
-    t1: 'ORDEN DE COMPRA', t2: 'PEDIDO A PROVEEDOR', nro: `<span style="font-size:20pt">Nº ${numero(o.numero)}</span>`, fecha: o.fecha,
-    filasCliente: filaCliente('Proveedor:', o.proveedor, 'Contacto:', o.contacto, 'lima') + filaCliente('Para:', c ? `${c.nombre}${c.lote ? ' (lote ' + c.lote + ')' : ''}` : 'Stock propio', 'Entrega:', o.entrega, 'lima-claro'),
-    items: o.items,
-    obs: `<strong>OBSERVACIONES:</strong>${esc(o.notas).replace(/\n/g, '<br>') || '—'}`,
-    firmas: '<div class="doc__firmas"><div>AUTORIZÓ</div><div>RECIBÍ CONFORME</div></div>',
-  });
-}
-
 function docRecibo(r) {
   const e = empleado(r.empleadoId) || { nombre: '—' };
   const total = totalRecibo(r);
@@ -1524,33 +1518,34 @@ function abrirDocumento(tipo, id) {
     html = docCobro(k); titulo = `Recibo de cobro Nº ${numero(k.numero)} — ${k.cliente?.nombre}`; ruta = `cobro/${id}`;
     tel = c?.telefono; email = c?.email;
     mensaje = `Hola ${(k.cliente?.nombre || '').split(' ')[0]}, te enviamos el recibo Nº ${numero(k.numero)} por tu pago de ${plata(totalCobro(k))}. ¡Muchas gracias!\nAires de Jardín`;
-  } else if (tipo === 'orden') {
-    const o = DB.ordenes.find(x => x.id === id); if (!o) return;
-    html = docOrden(o); titulo = `Orden de compra Nº ${numero(o.numero)} — ${o.proveedor}`; ruta = `orden/${id}`;
-    tel = /\d{6,}/.test((o.contacto || '').replace(/\D/g, '')) ? o.contacto : ''; email = /@/.test(o.contacto || '') ? o.contacto : '';
-    mensaje = `Hola, les enviamos la orden de compra Nº ${numero(o.numero)} de Aires de Jardín.`;
   } else if (tipo === 'recibo') {
     const r = DB.recibos.find(x => x.id === id); if (!r) return;
+    const e = empleado(r.empleadoId);
+    tel = e?.telefono; email = e?.email;
+    mensaje = `Hola ${(e?.nombre || '').split(' ')[0]}, te mandamos el recibo de la ${r.quincena === 1 ? '1ra' : '2da'} quincena de ${nombrePeriodo(r.periodo).toLowerCase()} por ${plata(totalRecibo(r))}.\nAires de Jardín`;
     html = docRecibo(r); titulo = `Recibo — ${empleado(r.empleadoId)?.nombre || ''} — ${r.quincena === 1 ? '1ra' : '2da'} quincena ${nombrePeriodo(r.periodo).toLowerCase()}`; ruta = `recibo/${id}`;
   }
   $('#hoja').innerHTML = html;
   $('#modalDocTitulo').textContent = titulo;
-  // Para quién es el documento (sirve para ofrecer guardar el teléfono en la ficha)
-  const clienteDoc = tipo === 'factura' ? DB.facturas.find(x => x.id === id)?.clienteId
-    : tipo === 'presupuesto' ? DB.presupuestos.find(x => x.id === id)?.clienteId
-    : tipo === 'cobro' ? DB.cobros.find(x => x.id === id)?.clienteId : '';
+  // A quién va el documento: si tiene ficha, se ofrece guardar ahí el teléfono o el mail que se escriba
+  const ficha = tipo === 'factura' ? cliente(DB.facturas.find(x => x.id === id)?.clienteId)
+    : tipo === 'presupuesto' ? cliente(DB.presupuestos.find(x => x.id === id)?.clienteId)
+    : tipo === 'cobro' ? cliente(DB.cobros.find(x => x.id === id)?.clienteId)
+    : tipo === 'recibo' ? empleado(DB.recibos.find(x => x.id === id)?.empleadoId) : null;
+  const envio = { titulo, mensaje, tel, email, ficha, esEmpleado: tipo === 'recibo' };
   $('#modalDocAcciones').innerHTML = `
     <button class="btn" id="imprimir">Imprimir / Guardar PDF</button>
-    ${tipo !== 'recibo' ? '<button class="btn btn--secundario" id="enviarWa">Enviar por WhatsApp</button>' : ''}
+    <button class="btn btn--secundario" id="enviarWa">Enviar por WhatsApp</button>
+    <button class="btn btn--secundario" id="enviarMail">Enviar por mail</button>
     <button class="btn btn--secundario" id="descargarPdf">Descargar PDF</button>
-    ${email ? `<a class="btn btn--secundario" href="mailto:${esc(email)}?subject=${encodeURIComponent(titulo)}&body=${encodeURIComponent(mensaje)}">Enviar por mail</a>` : ''}
     <button class="btn btn--fantasma" id="editarDoc">Editar</button>`;
   $('#imprimir').addEventListener('click', () => {
     const anterior = document.title; document.title = titulo.replace(/[\\/:*?"<>|]/g, '-');
     window.print(); document.title = anterior;
   });
   $('#editarDoc').addEventListener('click', () => { cerrarDocumento(); ir(ruta); });
-  $('#enviarWa')?.addEventListener('click', () => enviarPorWhatsapp({ titulo, mensaje, tel, clienteId: clienteDoc }));
+  $('#enviarWa').addEventListener('click', () => enviarDocumento('whatsapp', envio));
+  $('#enviarMail').addEventListener('click', () => enviarDocumento('mail', envio));
   $('#descargarPdf').addEventListener('click', async e => {
     const b = e.currentTarget; b.disabled = true; b.textContent = 'Preparando…';
     try { descargarArchivo(await generarPdf(), nombreArchivo(titulo)); }
@@ -1607,62 +1602,82 @@ function descargarArchivo(blob, nombre) {
 }
 const blobADataUrl = blob => new Promise(ok => { const r = new FileReader(); r.onload = () => ok(r.result); r.readAsDataURL(blob); });
 
-function enviarPorWhatsapp({ titulo, mensaje, tel, clienteId }) {
-  const c = cliente(clienteId);
+// Abre el mail ya armado. Outlook web es el predeterminado porque la casilla de la empresa es de outlook.com.ar
+const CORREOS = {
+  outlook: { nombre: 'Outlook', url: (a, asunto, cuerpo) => `https://outlook.live.com/mail/0/deeplink/compose?to=${encodeURIComponent(a)}&subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}` },
+  gmail: { nombre: 'Gmail', url: (a, asunto, cuerpo) => `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(a)}&su=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}` },
+  app: { nombre: 'App de mail', url: (a, asunto, cuerpo) => `mailto:${encodeURIComponent(a)}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}` },
+};
+const correoElegido = () => CORREOS[leerLocal('adj-correo')] ? leerLocal('adj-correo') : 'outlook';
+
+// Sube el PDF y devuelve el link; si no hay servidor, lo descarga para adjuntarlo a mano (devuelve '')
+async function linkDelPdf(pdfListo, titulo) {
+  try {
+    const r = await Datos.api('POST', '/documento', { pdf: await blobADataUrl(await pdfListo), nombre: nombreArchivo(titulo) });
+    if (r.ok) return r.url;
+  } catch { /* sigue abajo */ }
+  try { descargarArchivo(await pdfListo, nombreArchivo(titulo)); aviso('Se descargó el PDF: adjuntalo en el mensaje (clip 📎).'); } catch { /* sin PDF */ }
+  return '';
+}
+
+function enviarDocumento(canal, { titulo, mensaje, tel, email, ficha, esEmpleado }) {
+  const porMail = canal === 'mail';
   const pdfListo = generarPdf(); // se arma mientras se completa el diálogo
   pdfListo.catch(() => {});
   const puedeCompartirArchivo = !!(navigator.canShare && window.File && navigator.canShare({ files: [new File(['x'], 'x.pdf', { type: 'application/pdf' })] }));
-  dialogo(`<h2>Enviar por WhatsApp</h2>
-    <p>Se abre el chat con el mensaje listo y el <strong>link al PDF</strong>; el cliente lo abre con un toque.</p>
+  const quien = esEmpleado ? 'del empleado' : ficha ? 'del cliente' : 'del destinatario';
+  const valorInicial = porMail ? email : tel;
+  const asuntoInicial = `${titulo.split(' — ')[0]} — Aires de Jardín`;
+  dialogo(`<h2>Enviar por ${porMail ? 'mail' : 'WhatsApp'}</h2>
+    <p>Se abre ${porMail ? 'el correo' : 'el chat'} con el mensaje listo y el <strong>link al PDF</strong>; se abre con un toque.</p>
     <div class="campos" style="grid-template-columns:1fr">
-      <label class="campo"><span>WhatsApp del ${c ? 'cliente' : 'destinatario'}</span><input id="waTel" type="tel" inputmode="tel" value="${esc(tel || '')}" placeholder="11 1234-5678" autocomplete="off"></label>
-      ${c ? `<label class="ayuda" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="waGuardar" ${tel ? '' : 'checked'}> Guardar este número en la ficha de ${esc(c.nombre)}</label>` : ''}
-      <label class="campo"><span>Mensaje</span><textarea id="waMensaje" rows="4">${esc(mensaje)}</textarea></label>
+      <label class="campo"><span>${porMail ? 'Mail' : 'WhatsApp'} ${quien}</span><input id="envDestino" type="${porMail ? 'email' : 'tel'}" inputmode="${porMail ? 'email' : 'tel'}" value="${esc(valorInicial || '')}" placeholder="${porMail ? 'nombre@ejemplo.com' : '11 1234-5678'}" autocomplete="off"></label>
+      ${ficha ? `<label class="ayuda" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="envGuardar" ${valorInicial ? '' : 'checked'}> Guardar en la ficha de ${esc(ficha.nombre)}</label>` : ''}
+      ${porMail ? `<label class="campo"><span>Asunto</span><input id="envAsunto" value="${esc(asuntoInicial)}"></label>` : ''}
+      <label class="campo"><span>Mensaje</span><textarea id="envMensaje" rows="4">${esc(mensaje)}</textarea></label>
+      ${porMail ? `<label class="campo"><span>Abrir con</span><select id="envCorreo">${Object.entries(CORREOS).map(([k, v]) => `<option value="${k}" ${k === correoElegido() ? 'selected' : ''}>${v.nombre}</option>`).join('')}</select></label>` : ''}
     </div>
-    <p class="ayuda" id="waEstado" style="margin:10px 0 0">Preparando el PDF…</p>
+    <p class="ayuda" id="envEstado" style="margin:10px 0 0">Preparando el PDF…</p>
     <div class="dialogo__botones" style="flex-wrap:wrap">
       <button class="btn btn--secundario" data-cerrar>Cancelar</button>
-      ${puedeCompartirArchivo ? '<button class="btn btn--secundario" id="waArchivo">Mandar el archivo PDF</button>' : ''}
-      <button class="btn" id="waEnviar">Abrir WhatsApp</button>
+      ${puedeCompartirArchivo ? '<button class="btn btn--secundario" id="envArchivo">Mandar el archivo PDF</button>' : ''}
+      <button class="btn" id="envEnviar">Abrir ${porMail ? 'el correo' : 'WhatsApp'}</button>
     </div>`, (d, cerrar) => {
-    const estado = $('#waEstado', d);
+    const estado = $('#envEstado', d);
     pdfListo.then(() => { estado.textContent = 'PDF listo ✓'; }, () => { estado.textContent = 'No se pudo armar el PDF: se va a mandar solo el mensaje.'; });
-    const guardarTelefono = numero => {
-      if (c && $('#waGuardar', d)?.checked && numero && numero !== c.telefono) { c.telefono = numero; Datos.guardar(); }
+    const destino = () => $('#envDestino', d).value.trim();
+    const valido = v => porMail ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) : v.replace(/\D/g, '').length >= 8;
+    const guardarEnFicha = v => {
+      const campo = porMail ? 'email' : 'telefono';
+      if (ficha && $('#envGuardar', d)?.checked && v && v !== ficha[campo]) { ficha[campo] = v; Datos.guardar(); }
     };
 
-    $('#waEnviar', d).addEventListener('click', async () => {
-      const numero = $('#waTel', d).value.trim();
-      if (numero.replace(/\D/g, '').length < 8) { aviso('Escribí un número de WhatsApp válido'); $('#waTel', d).focus(); return; }
+    $('#envEnviar', d).addEventListener('click', async () => {
+      const v = destino();
+      if (!valido(v)) { aviso(porMail ? 'Escribí un mail válido' : 'Escribí un número de WhatsApp válido'); $('#envDestino', d).focus(); return; }
+      const correo = porMail ? $('#envCorreo', d).value : '';
+      if (correo) escribirLocal('adj-correo', correo);
       // La ventana se abre ya, dentro del clic, para que el navegador no la bloquee
-      const ventana = window.open('', '_blank');
-      const boton = $('#waEnviar', d); boton.disabled = true;
-      let texto = $('#waMensaje', d).value.trim();
-      try {
-        estado.textContent = 'Subiendo el PDF…';
-        const blob = await pdfListo;
-        const r = await Datos.api('POST', '/documento', { pdf: await blobADataUrl(blob), nombre: nombreArchivo(titulo) });
-        if (!r.ok) throw new Error(r.error);
-        texto += `\n\n📄 ${titulo.split(' — ')[0]}: ${r.url}`;
-      } catch {
-        // Sin servidor: se descarga el PDF para adjuntarlo a mano
-        try { descargarArchivo(await pdfListo, nombreArchivo(titulo)); aviso('Se descargó el PDF: adjuntalo en el chat (clip 📎).'); } catch { /* sin PDF */ }
-      }
-      guardarTelefono(numero);
-      const link = linkWa(numero, texto);
+      const ventana = correo === 'app' ? null : window.open('', '_blank');
+      $('#envEnviar', d).disabled = true;
+      estado.textContent = 'Subiendo el PDF…';
+      let texto = $('#envMensaje', d).value.trim();
+      const url = await linkDelPdf(pdfListo, titulo);
+      if (url) texto += `\n\n📄 ${titulo.split(' — ')[0]}: ${url}`;
+      guardarEnFicha(v);
+      const link = porMail ? CORREOS[correo].url(v, $('#envAsunto', d).value.trim(), texto) : linkWa(v, texto);
       if (ventana) ventana.location.href = link; else location.href = link;
       cerrar();
     });
 
-    $('#waArchivo', d)?.addEventListener('click', async () => {
-      const numero = $('#waTel', d).value.trim();
-      guardarTelefono(numero);
+    $('#envArchivo', d)?.addEventListener('click', async () => {
+      guardarEnFicha(destino());
       try {
         const archivo = new File([await pdfListo], nombreArchivo(titulo), { type: 'application/pdf' });
-        await navigator.share({ files: [archivo], text: $('#waMensaje', d).value.trim(), title: titulo });
+        await navigator.share({ files: [archivo], text: $('#envMensaje', d).value.trim(), title: titulo });
         cerrar();
       } catch (e) {
-        if (e?.name !== 'AbortError') aviso('No se pudo compartir el archivo. Probá con "Abrir WhatsApp".');
+        if (e?.name !== 'AbortError') aviso('No se pudo compartir el archivo. Probá con el otro botón.');
       }
     });
   });
